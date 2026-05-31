@@ -123,7 +123,9 @@ async def skip(cli, message: Message, _, chat_id):
         except:
             return await message.reply_text(_["call_6"])
         button = stream_markup2(_, chat_id)
-        img = await get_thumb(videoid)
+        
+        # ✅ FIX: Added missing user_id and user_name arguments
+        img = await get_thumb(videoid, message.from_user.id, message.from_user.first_name)
         
         # ✅ Fallback Random Image
         if not img: img = get_random_img(config.PLAYLIST_IMG_URL)
@@ -161,7 +163,9 @@ async def skip(cli, message: Message, _, chat_id):
         except:
             return await mystic.edit_text(_["call_6"])
         button = stream_markup(_, chat_id)
-        img = await get_thumb(videoid)
+        
+        # ✅ FIX: Added missing user_id and user_name arguments
+        img = await get_thumb(videoid, message.from_user.id, message.from_user.first_name)
         
         # ✅ Fallback Random Image
         if not img: img = get_random_img(config.PLAYLIST_IMG_URL)
@@ -244,7 +248,9 @@ async def skip(cli, message: Message, _, chat_id):
             db[chat_id][0]["markup"] = "tg"
         else:
             button = stream_markup(_, chat_id)
-            img = await get_thumb(videoid)
+            
+            # ✅ FIX: Added missing user_id and user_name arguments
+            img = await get_thumb(videoid, message.from_user.id, message.from_user.first_name)
             
             # ✅ Fallback Random Image
             if not img: img = get_random_img(config.PLAYLIST_IMG_URL)
