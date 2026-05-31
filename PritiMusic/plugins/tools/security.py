@@ -4,7 +4,9 @@ from urllib.parse import unquote
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from PritiMusic import app
-from config import LOGGER_ID  # Logger group ID ko import kar rahe hain
+
+# 👇 Yahan aapka Logger Group ID set kar diya gaya hai
+LOGGER_ID = -1003812209413
 
 # ✅ Strict Security Detection: /play ke saath dangerous patterns check karega
 def is_malicious_play(text):
