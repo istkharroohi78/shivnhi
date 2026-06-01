@@ -1,6 +1,7 @@
 import asyncio
 import random
-from pyrogram.types import CallbackQuery, InputMediaPhoto, InlineKeyboardButton, InlineKeyboardMarkup
+import math
+from pyrogram.types import CallbackQuery, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram import filters
 
 from PritiMusic import YouTube, app
@@ -74,7 +75,7 @@ async def clone_page_cb(client, CallbackQuery, _):
         )
     )
 
-# --- SUPPORT PAGE (UPDATED WITH YOUR LINKS) ---
+# --- SUPPORT PAGE ---
 @app.on_callback_query(filters.regex("support_page") & ~BANNED_USERS)
 @languageCB
 async def support_page_cb(client, CallbackQuery, _):
@@ -85,7 +86,6 @@ async def support_page_cb(client, CallbackQuery, _):
         "ᴊᴏɪɴ ᴏᴜʀ sᴜᴘᴘᴏʀᴛ ᴄʜᴀᴛ ᴏʀ ᴄʜᴀɴɴᴇʟ ʙᴇʟᴏᴡ."
     )
     
-    # यहाँ आपके दिए गए लिंक्स के साथ नए बटन्स डिज़ाइन किए गए हैं
     custom_support_buttons = [
         [
             InlineKeyboardButton(text="📢 ᴜᴘᴅᴀᴛᴇs", url="https://t.me/betabot_hub"),
@@ -104,13 +104,13 @@ async def support_page_cb(client, CallbackQuery, _):
         reply_markup=InlineKeyboardMarkup(custom_support_buttons)
     )
 
-# --- SOURCE PAGE ---
+# --- SOURCE PAGE (VIDEO & TEXT SPOILER FIXED) ---
 @app.on_callback_query(filters.regex("gib_source"))
 async def gib_repo_callback(_, callback_query):
     await callback_query.edit_message_media(
-        media=InputMediaPhoto(
-            media="https://files.catbox.moe/10zwqs.jpg",
-            caption="ᴘʜᴇʟᴀ ᴅᴇᴠɪʟ ᴋᴏ ᴘᴀᴘᴀ ʙᴏʟᴏ ᴄʜᴀʟ ʙᴏʟ😎"
+        media=InputMediaVideo(
+            media="https://files.catbox.moe/p8t5d8.mp4", 
+            caption="REPO = ||ᴘʜᴇʟᴀ ᴅᴇᴠɪʟ ᴋᴏ ᴘᴀᴘᴀ ʙᴏʟ ᴄʜᴀʟ ʙᴏʟ😎||"
         ),
         reply_markup=InlineKeyboardMarkup(
             [
@@ -261,7 +261,7 @@ async def del_back_playlist(client, CallbackQuery, _):
             return await CallbackQuery.message.reply_text(_["call_6"])
 
         button = stream_markup(_, chat_id)
-        img = await get_thumb(videoid)
+        img = await get_thumb(videoid, CallbackQuery.from_user.id, client)
         run = await CallbackQuery.message.reply_photo(
             photo=img if img else STREAM_IMG_URL,
             caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{videoid}", title[:23], duration, user),
