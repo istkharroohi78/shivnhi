@@ -3,7 +3,8 @@ from pyrogram.types import (
     InlineKeyboardMarkup,
     InlineQueryResultPhoto,
 )
-from py_yt import VideosSearch
+# 👇 Nayi library yahan update kar di gayi hai
+from youtubesearchpython.__future__ import VideosSearch
 from pyrogram import filters, Client
 from PritiMusic import app
 from PritiMusic.utils.inlinequery import answer
@@ -23,7 +24,7 @@ async def inline_query_handler(client, query):
     
     if text.strip() == "":
         try:
-            await client.answer_inline_query(query.id, results=answer, cache_time=10)
+            return await client.answer_inline_query(query.id, results=answer, cache_time=10)
         except:
             return
     else:
