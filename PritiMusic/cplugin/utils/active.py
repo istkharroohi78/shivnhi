@@ -6,10 +6,8 @@ stream = {}
 
 
 async def is_active_chat(chat_id: int) -> bool:
-    if chat_id not in active:
-        return False
-    else:
-        return True
+    # Optimized: If-else ki zaroorat nahi hai, direct boolean return karega
+    return chat_id in active
 
 
 async def add_active_chat(chat_id: int):
@@ -27,17 +25,12 @@ async def get_active_chats() -> list:
 
 
 async def is_streaming(chat_id: int) -> bool:
-    run = stream.get(chat_id)
-    if not run:
-        return False
-    return run
+    # Optimized: Seedha dict se False ya True return karega
+    return bool(stream.get(chat_id, False))
 
 
 async def iss_streaming(chat_id: int) -> bool:
-    run = stream.get(chat_id)
-    if not run:
-        return False
-    return True
+    return bool(stream.get(chat_id, False))
 
 
 async def stream_on(chat_id: int):
@@ -50,8 +43,17 @@ async def stream_off(chat_id: int):
 
 async def _clear_(chat_id):
     try:
-        # ✅ FIX: db clear kar rahe hain (clonedb nahi)
+        # ✅ FIX 1: db clear kar rahe hain (clonedb nahi)
         db[chat_id] = []
+        
+        # ✅ FIX 2: Active list se remove karna
         await remove_active_chat(chat_id)
-    except:
+        
+        # ✅ FIX 3 (NEW): Stream status ko dictionary se hatana bohot zaroori hai
+        # Warna cache memory full hogi aur previous state stuck reh jayegi
+        if chat_id in stream:
+            stream.pop(chat_id)
+            
+    except Exception as e:
+        print(f"Error in _clear_: {e}")  # Taki error aaye to terminal me dikh jaye, bot silent na rahe
         return
