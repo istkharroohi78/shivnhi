@@ -20,6 +20,10 @@ from PritiMusic.utils.database import (
     set_loop,
     get_assistant
 )
+
+# ✅ Autoplay ke database imports
+from PritiMusic.utils.database.autoplay import is_autoplay_group, add_autoplay_group, remove_autoplay_group
+
 from PritiMusic.utils.decorators.language import languageCB
 from PritiMusic.utils.formatters import seconds_to_min
 from PritiMusic.utils.inline import (
@@ -124,7 +128,7 @@ async def music_markup(client, CallbackQuery, _):
 
 @Client.on_callback_query(filters.regex("Pages") & ~BANNED_USERS)
 @languageCB
-async def del_back_playlist(client, CallbackQuery, _):
+async def del_back_playlist_pages(client, CallbackQuery, _):
     await CallbackQuery.answer()
     callback_data = CallbackQuery.data.strip()
     chat_id = CallbackQuery.message.chat.id
@@ -313,7 +317,7 @@ async def del_back_playlist(client, CallbackQuery, _):
             photo=get_random_img(PLAYLIST_IMG_URL),
             caption=_["admin_2"].format(mention),
             reply_markup=InlineKeyboardMarkup(buttons),
-            has_spoiler=True
+            has_spoiler=False
         )
 
     elif command == "Resume":
@@ -345,7 +349,7 @@ async def del_back_playlist(client, CallbackQuery, _):
             photo=get_random_img(PLAYLIST_IMG_URL),
             caption=_["admin_4"].format(mention),
             reply_markup=InlineKeyboardMarkup(buttons_resume),
-            has_spoiler=True
+            has_spoiler=False
         )
 
     elif command == "Stop" or command == "End":
@@ -358,12 +362,30 @@ async def del_back_playlist(client, CallbackQuery, _):
             photo=get_random_img(PLAYLIST_IMG_URL),
             caption=_["admin_5"].format(mention), 
             reply_markup=close_markup(_),
-            has_spoiler=True
+            has_spoiler=False
         )
         try:
             await CallbackQuery.message.delete()
         except:
             pass
+
+    # ✅ AUTOPLAY BUTTON LOGIC ADDED HERE
+    elif command == "Autoplay":
+        state = await is_autoplay_group(chat_id)
+        if state:
+            await remove_autoplay_group(chat_id)
+            await CallbackQuery.answer("🔴 Autoplay Disabled!", show_alert=True)
+            await CallbackQuery.message.reply_text(
+                f"**🎧 𝐀𝐮𝐭𝐨𝐩𝐥𝐚𝐲 𝐒𝐲𝐬𝐭𝐞𝐦**\n\nGroup ke liye autoplay status ab **Disabled 🔴** hai.\n└ ʙʏ : {mention}", 
+                reply_markup=close_markup(_)
+            )
+        else:
+            await add_autoplay_group(chat_id)
+            await CallbackQuery.answer("🟢 Autoplay Enabled!", show_alert=True)
+            await CallbackQuery.message.reply_text(
+                f"**🎧 𝐀𝐮𝐭𝐨𝐩𝐥𝐚𝐲 𝐒𝐲𝐬𝐭𝐞𝐦**\n\nGroup ke liye autoplay status ab **Enabled 🟢** hai.\n└ ʙʏ : {mention}", 
+                reply_markup=close_markup(_)
+            )
 
     elif command == "Mute":
         if await is_muted(chat_id):
@@ -614,7 +636,7 @@ async def del_back_playlist(client, CallbackQuery, _):
                         user,
                     ),
                     reply_markup=InlineKeyboardMarkup(button),
-                    has_spoiler=True
+                    has_spoiler=False
                 )
                 db[chat_id][0]["mystic"] = run
                 db[chat_id][0]["markup"] = "stream"
@@ -675,6 +697,7 @@ async def del_back_playlist(client, CallbackQuery, _):
         string = _["admin_25"].format(seconds_to_min(to_seek))
         await mystic.edit_text(f"{string}\n\nᴄʜᴀɴɢᴇs ᴅᴏɴᴇ ʙʏ : {mention} !")
 
+# ✅ Corrected & Optimized Markup Timer Loop
 async def markup_timer():
     while not await asyncio.sleep(300):
         active_chats = await get_active_chats()
@@ -688,53 +711,33 @@ async def markup_timer():
                 duration_seconds = int(playing[0]["seconds"])
                 if duration_seconds == 0:
                     continue
-                try:
-                    mystic = playing[0]["markup"]
-                except:
-                    continue
-                try:
-                    check = checker[chat_id][mystic.id]
-                    if check is False:
-                        continue
-                except:
-                    pass
-                try:
-                    language = await get_lang(chat_id)
-                    _ = get_string(language)
-                except:
-                    _ = get_string("en")
+                
                 try:
                     mystic = playing[0]["mystic"]
                     markup = playing[0]["markup"]
                 except:
                     continue
+
                 try:
-                    check = wrong[chat_id][mystic.id]
-                    if check is False:
+                    check_checker = checker[chat_id][mystic.id]
+                    if check_checker is False:
                         continue
                 except:
                     pass
+
+                try:
+                    check_wrong = wrong[chat_id][mystic.id]
+                    if check_wrong is False:
+                        continue
+                except:
+                    pass
+
                 try:
                     language = await get_lang(chat_id)
                     _ = get_string(language)
                 except:
                     _ = get_string("en")
-                try:
-                    mystic = playing[0]["mystic"]
-                    markup = playing[0]["markup"]
-                except:
-                    continue
-                try:
-                    check = wrong[chat_id][mystic.id]
-                    if check is False:
-                        continue
-                except:
-                    pass
-                try:
-                    language = await get_lang(chat_id)
-                    _ = get_string(language)
-                except:
-                    _ = get_string("en")
+                    
                 try:
                     buttons = (
                         stream_markup_timer(
