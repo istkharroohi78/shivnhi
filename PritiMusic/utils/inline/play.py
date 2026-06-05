@@ -59,13 +59,13 @@ def stream_markup_timer(_, chat_id, played, dur):
     played_sec = time_to_seconds(played)
     duration_sec = time_to_seconds(dur)
     
-    # 🔥 Progress Bar ▰▱
+    # Progress Bar calculation
     total_blocks = 10
     filled_blocks = int((played_sec / duration_sec) * total_blocks) if duration_sec != 0 else 0
+    filled_blocks = min(max(filled_blocks, 0), total_blocks)
     bar = "▰" * filled_blocks + "▱" * (total_blocks - filled_blocks)
 
     buttons = [
-        # ⏱ Timer + Bar
         [
             InlineKeyboardButton(
                 text=f"{played} {bar} {dur}",
@@ -282,6 +282,7 @@ def stream_markup_timer2(_, chat_id, played, dur):
     
     total_blocks = 10
     filled_blocks = int((played_sec / duration_sec) * total_blocks) if duration_sec != 0 else 0
+    filled_blocks = min(max(filled_blocks, 0), total_blocks)
     bar = "▰" * filled_blocks + "▱" * (total_blocks - filled_blocks)
 
     buttons = [
@@ -496,6 +497,7 @@ def panel_markup_4(_, vidid, chat_id, played, dur):
     
     total_blocks = 10
     filled_blocks = int((played_sec / duration_sec) * total_blocks) if duration_sec != 0 else 0
+    filled_blocks = min(max(filled_blocks, 0), total_blocks)
     bar = "▰" * filled_blocks + "▱" * (total_blocks - filled_blocks)
 
     buttons = [
@@ -541,6 +543,7 @@ def panel_markup_clone(_, vidid, chat_id, played, dur):
     
     total_blocks = 10
     filled_blocks = int((played_sec / duration_sec) * total_blocks) if duration_sec != 0 else 0
+    filled_blocks = min(max(filled_blocks, 0), total_blocks)
     bar = "▰" * filled_blocks + "▱" * (total_blocks - filled_blocks)
 
     buttons = [
