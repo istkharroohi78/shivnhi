@@ -10,16 +10,12 @@ from youtubesearchpython.__future__ import VideosSearch, Playlist
 import aiohttp
 
 API_URL = os.environ.get("SHRUTI_API_URL", "https://api.shrutibots.site")
-
-API_KEY = os.environ.get("SHRUTI_API_KEY", "ShrutiBotsC0WH1GowF2HkGoKv4F3y") ## Get This API KEY FROM TELEGRAM BOT USERNAME: @SHRUTIAPIBOT 
-
+API_KEY = os.environ.get("SHRUTI_API_KEY", "ShrutiBotsC0WH1GowF2HkGoKv4F3y") 
 DOWNLOAD_DIR = "downloads"
-
 
 def time_to_seconds(time):
     stringt = str(time)
     return sum(int(x) * 60 ** i for i, x in enumerate(reversed(stringt.split(":"))))
-
 
 async def download_song(link: str) -> str:
     video_id = link.split("v=")[-1].split("&")[0] if "v=" in link else link
@@ -54,7 +50,6 @@ async def download_song(link: str) -> str:
                 pass
         return None
 
-
 async def download_video(link: str) -> str:
     video_id = link.split("v=")[-1].split("&")[0] if "v=" in link else link
     if not video_id or len(video_id) < 3:
@@ -87,7 +82,6 @@ async def download_video(link: str) -> str:
             except Exception:
                 pass
         return None
-
 
 class YouTubeAPI:
     def __init__(self):
@@ -219,25 +213,22 @@ class YouTubeAPI:
         if "&" in link:
             link = link.split("&")[0]
             
-        # 🚀 Yahan aria2c ki settings add kari gayi hain
         ytdl_opts = {
             "quiet": True,
             "external_downloader": "aria2c",
             "external_downloader_args": [
-                "-x", "16",           # 16 parallel connections
-                "-s", "16",           # 16 segments
-                "-k", "1M",           # 1MB minimum segment size
+                "-x", "16",           
+                "-s", "16",           
+                "-k", "1M",           
                 "--allow-piece-length-change=true"
             ]
         }
         
         ydl = yt_dlp.YoutubeDL(ytdl_opts)
-        
         formats_available = []
         loop = asyncio.get_event_loop()
         
         try:
-            # 🚀 Anti-Lag Fix: Background execution
             r = await loop.run_in_executor(None, lambda: ydl.extract_info(link, download=False))
             if r and "formats" in r:
                 for format in r["formats"]:
@@ -297,56 +288,78 @@ class YouTubeAPI:
         except Exception:
             return None, False
 
-    # ==========================================
-    # YAHAN ADD KIYA GAYA HAI NAYA AUTOPLAY FUNCTION
-    # ==========================================
     async def autoplay(self, last_vidid: str, title: str, max_duration: int = None):
         """
-        Custom Autoplay function to find the next best song based on the last played song.
+        Custom Autoplay function with robust yt-dlp fallback.
         """
         try:
             import random
-            
             search_query = f"{title} official audio"
-            search = VideosSearch(search_query, limit=15)
-            result = await search.next()
-            
-            if not result or not result.get("result"):
-                return None
-                
             valid_choices = []
             
-            for res in result["result"]:
-                vidid = str(res.get("id"))
-                if vidid == last_vidid:
-                    continue
-                    
-                dur_str = str(res.get("duration", "0:00"))
-                dur_sec = 0
+            # Primary: youtubesearchpython
+            try:
+                search = VideosSearch(search_query, limit=15)
+                result = await search.next()
+                if result and result.get("result"):
+                    for res in result["result"]:
+                        vidid = str(res.get("id") or "")
+                        if not vidid or vidid == "None" or vidid == last_vidid:
+                            continue
+                            
+                        dur_str = str(res.get("duration", "0:00"))
+                        dur_sec = 0
+                        if dur_str and ":" in dur_str:
+                            parts = dur_str.split(":")
+                            try:
+                                if len(parts) == 2:
+                                    dur_sec = int(parts[0]) * 60 + int(parts[1])
+                                elif len(parts) == 3:
+                                    dur_sec = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+                            except ValueError:
+                                pass
+                                
+                        if dur_sec < 30: continue
+                        if max_duration and dur_sec > max_duration: continue
+                            
+                        valid_choices.append({
+                            "vidid": vidid,
+                            "title": str(res.get("title", "Unknown Title")).title(),
+                            "duration_min": dur_str,
+                            "duration_sec": dur_sec
+                        })
+            except Exception:
+                pass # Ignore library bugs, switch to yt-dlp
+
+            # Fallback: yt-dlp (Agar youtubesearchpython fail hua)
+            if not valid_choices:
+                import yt_dlp
+                loop = asyncio.get_event_loop()
+                ytdl_opts = {"quiet": True, "extract_flat": True}
+                ydl = yt_dlp.YoutubeDL(ytdl_opts)
                 
-                if dur_str and ":" in dur_str:
-                    parts = dur_str.split(":")
-                    try:
-                        if len(parts) == 2:
-                            dur_sec = int(parts[0]) * 60 + int(parts[1])
-                        elif len(parts) == 3:
-                            dur_sec = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-                    except ValueError:
-                        pass
-                
-                if dur_sec < 30:
-                    continue
-                    
-                if max_duration and dur_sec > max_duration:
-                    continue
-                    
-                valid_choices.append({
-                    "vidid": vidid,
-                    "title": str(res.get("title", "Unknown Title")).title(),
-                    "duration_min": dur_str,
-                    "duration_sec": dur_sec
-                })
-                
+                r = await loop.run_in_executor(None, lambda: ydl.extract_info(f"ytsearch10:{search_query}", download=False))
+                if r and "entries" in r:
+                    for entry in r["entries"]:
+                        vidid = entry.get("id")
+                        if not vidid or vidid == last_vidid:
+                            continue
+                            
+                        dur_sec = entry.get("duration", 0)
+                        if not dur_sec or dur_sec < 30: continue
+                        if max_duration and dur_sec > max_duration: continue
+                            
+                        m, s = divmod(dur_sec, 60)
+                        h, m = divmod(m, 60)
+                        dur_str = f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+                        
+                        valid_choices.append({
+                            "vidid": vidid,
+                            "title": str(entry.get("title", "Unknown Title")).title(),
+                            "duration_min": dur_str,
+                            "duration_sec": dur_sec
+                        })
+
             if valid_choices:
                 return random.choice(valid_choices)
                 
@@ -357,6 +370,5 @@ class YouTubeAPI:
             LOGGER = logging.getLogger(__name__)
             LOGGER.error(f"YouTube Autoplay Function Error: {e}")
             return None
-
 
 YouTube = YouTubeAPI()
