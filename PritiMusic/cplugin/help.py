@@ -79,7 +79,8 @@ async def helper_private(
 @LanguageStart
 async def help_com_group(client, message: Message, _):
     keyboard = private_help_panel(_)
-    await message.reply_text(_["help_2"], reply_markup=InlineKeyboardMarkup(keyboard))
+    # ✅ FIX: Removed the redundant InlineKeyboardMarkup wrapper here
+    await message.reply_text(_["help_2"], reply_markup=keyboard)
 
 
 @Client.on_callback_query(filters.regex("help_callback") & ~BANNED_USERS)
