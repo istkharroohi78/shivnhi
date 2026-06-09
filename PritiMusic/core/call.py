@@ -100,9 +100,10 @@ class Call(PyTgCalls):
         self.custom_assistants = {} 
         self.active_clients = {} 
 
-    # 🎵 HELPER: DOLBY AUDIO + 1080->720->480 VIDEO FALLBACK FOR CHANGE_STREAM
+    # 🎵 HELPER: SAFE SWEET AUDIO + 1080->720->480 VIDEO FALLBACK FOR CHANGE_STREAM
     async def _safe_change_stream(self, client, chat_id, file_path, video=False, extra_args=""):
-        audio_fx = f"{extra_args} -af aresample=48000,crystalizer,bass=g=4".strip()
+        # 🔥 Removed 'crystalizer', using safe Bass & Treble
+        audio_fx = f"{extra_args} -af aresample=48000,bass=g=3,treble=g=2,volume=1.2".strip()
         
         if not video:
             stream = AudioPiped(file_path, audio_parameters=HighQualityAudio(), additional_ffmpeg_parameters=audio_fx)
@@ -120,9 +121,10 @@ class Call(PyTgCalls):
                 stream = AudioVideoPiped(file_path, audio_parameters=HighQualityAudio(), video_parameters=LowQualityVideo(), additional_ffmpeg_parameters=audio_fx)
                 await client.change_stream(chat_id, stream)
 
-    # 🎵 HELPER: DOLBY AUDIO + 1080->720->480 VIDEO FALLBACK FOR JOIN_CALL
+    # 🎵 HELPER: SAFE SWEET AUDIO + 1080->720->480 VIDEO FALLBACK FOR JOIN_CALL
     async def _safe_join_call(self, assistant_to_join, chat_id, file_path, video=False):
-        audio_fx = "-af aresample=48000,crystalizer,bass=g=4"
+        # 🔥 Safe Sweet Audio Filter
+        audio_fx = "-af aresample=48000,bass=g=3,treble=g=2,volume=1.2"
         
         if not video:
             stream = AudioPiped(file_path, audio_parameters=HighQualityAudio(), additional_ffmpeg_parameters=audio_fx)
