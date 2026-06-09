@@ -100,45 +100,39 @@ class Call(PyTgCalls):
         self.custom_assistants = {} 
         self.active_clients = {} 
 
-    # 🎵 HELPER: SAFE SWEET AUDIO + 1080->720->480 VIDEO FALLBACK FOR CHANGE_STREAM
+    # 🎵 HELPER: HIGH QUALITY AUDIO + 1080->720->480 VIDEO FALLBACK FOR CHANGE_STREAM
     async def _safe_change_stream(self, client, chat_id, file_path, video=False, extra_args=""):
-        # 🔥 Removed 'crystalizer', using safe Bass & Treble
-        audio_fx = f"{extra_args} -af aresample=48000,bass=g=3,treble=g=2,volume=1.2".strip()
-        
         if not video:
-            stream = AudioPiped(file_path, audio_parameters=HighQualityAudio(), additional_ffmpeg_parameters=audio_fx)
+            stream = AudioPiped(file_path, audio_parameters=HighQualityAudio(), additional_ffmpeg_parameters=extra_args)
             await client.change_stream(chat_id, stream)
             return
 
         try: # Try 1080p
-            stream = AudioVideoPiped(file_path, audio_parameters=HighQualityAudio(), video_parameters=HighQualityVideo(), additional_ffmpeg_parameters=audio_fx)
+            stream = AudioVideoPiped(file_path, audio_parameters=HighQualityAudio(), video_parameters=HighQualityVideo(), additional_ffmpeg_parameters=extra_args)
             await client.change_stream(chat_id, stream)
         except Exception:
             try: # Fallback to 720p
-                stream = AudioVideoPiped(file_path, audio_parameters=HighQualityAudio(), video_parameters=MediumQualityVideo(), additional_ffmpeg_parameters=audio_fx)
+                stream = AudioVideoPiped(file_path, audio_parameters=HighQualityAudio(), video_parameters=MediumQualityVideo(), additional_ffmpeg_parameters=extra_args)
                 await client.change_stream(chat_id, stream)
             except Exception: # Final Fallback to 480p
-                stream = AudioVideoPiped(file_path, audio_parameters=HighQualityAudio(), video_parameters=LowQualityVideo(), additional_ffmpeg_parameters=audio_fx)
+                stream = AudioVideoPiped(file_path, audio_parameters=HighQualityAudio(), video_parameters=LowQualityVideo(), additional_ffmpeg_parameters=extra_args)
                 await client.change_stream(chat_id, stream)
 
-    # 🎵 HELPER: SAFE SWEET AUDIO + 1080->720->480 VIDEO FALLBACK FOR JOIN_CALL
+    # 🎵 HELPER: HIGH QUALITY AUDIO + 1080->720->480 VIDEO FALLBACK FOR JOIN_CALL
     async def _safe_join_call(self, assistant_to_join, chat_id, file_path, video=False):
-        # 🔥 Safe Sweet Audio Filter
-        audio_fx = "-af aresample=48000,bass=g=3,treble=g=2,volume=1.2"
-        
         if not video:
-            stream = AudioPiped(file_path, audio_parameters=HighQualityAudio(), additional_ffmpeg_parameters=audio_fx)
+            stream = AudioPiped(file_path, audio_parameters=HighQualityAudio())
             return await assistant_to_join.join_group_call(chat_id, stream, stream_type=StreamType().pulse_stream)
 
         try: # Try 1080p
-            stream = AudioVideoPiped(file_path, audio_parameters=HighQualityAudio(), video_parameters=HighQualityVideo(), additional_ffmpeg_parameters=audio_fx)
+            stream = AudioVideoPiped(file_path, audio_parameters=HighQualityAudio(), video_parameters=HighQualityVideo())
             await assistant_to_join.join_group_call(chat_id, stream, stream_type=StreamType().pulse_stream)
         except Exception:
             try: # Fallback to 720p
-                stream = AudioVideoPiped(file_path, audio_parameters=HighQualityAudio(), video_parameters=MediumQualityVideo(), additional_ffmpeg_parameters=audio_fx)
+                stream = AudioVideoPiped(file_path, audio_parameters=HighQualityAudio(), video_parameters=MediumQualityVideo())
                 await assistant_to_join.join_group_call(chat_id, stream, stream_type=StreamType().pulse_stream)
             except Exception: # Final Fallback to 480p
-                stream = AudioVideoPiped(file_path, audio_parameters=HighQualityAudio(), video_parameters=LowQualityVideo(), additional_ffmpeg_parameters=audio_fx)
+                stream = AudioVideoPiped(file_path, audio_parameters=HighQualityAudio(), video_parameters=LowQualityVideo())
                 await assistant_to_join.join_group_call(chat_id, stream, stream_type=StreamType().pulse_stream)
 
     async def get_active_clients(self, chat_id):
