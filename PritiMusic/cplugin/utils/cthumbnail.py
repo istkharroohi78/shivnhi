@@ -124,7 +124,9 @@ async def get_thumb(videoid, user_id, client):
     
     u_photo = await download_user_photo(user_id)
     if u_photo:
-        u_img_glowing, u_offset = get_glowing_circle(Image.open(u_photo).resize((450, 450)))
+        # Yahan par GaussianBlur apply kiya gaya hai 👇
+        u_img_blurred = Image.open(u_photo).resize((450, 450)).filter(ImageFilter.GaussianBlur(3))
+        u_img_glowing, u_offset = get_glowing_circle(u_img_blurred)
         background.paste(u_img_glowing, (1350 - u_offset, 250 - u_offset), u_img_glowing)
 
     draw.text((650, 300), clear(title, 25), fill="white", font=f1)
