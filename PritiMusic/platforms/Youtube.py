@@ -5,6 +5,7 @@ import time
 import yt_dlp
 import aiohttp
 import logging
+import config  # ✅ Config import kiya gaya hai
 from typing import Union
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
@@ -70,7 +71,7 @@ async def api_download(video_id: str, download_type: str, title: str = None) -> 
                 pass
         return None
 
-# 🛡️ 2. YOUTUBE YT-DLP FALLBACK (With Spoofing Bypass)
+# 🛡️ 2. YOUTUBE YT-DLP FALLBACK
 async def ytdl_fallback_download(link: str, download_type: str, title: str = None) -> str:
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     video_id = link.split("v=")[-1].split("&")[0] if "v=" in link else link
@@ -112,7 +113,7 @@ async def ytdl_fallback_download(link: str, download_type: str, title: str = Non
         LOGGER.error(f"yt-dlp fallback error: {str(e)}")
         return None
 
-# 🎵 3. SPOTIFY SOURCE-HOPPING (FIRST FALLBACK)
+# 🎵 3. SPOTIFY SOURCE-HOPPING
 async def spotify_fallback_download(title: str) -> str:
     if not title: return None
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -123,7 +124,6 @@ async def spotify_fallback_download(title: str) -> str:
 
     try:
         async with aiohttp.ClientSession() as session:
-            # Replace this URL if you find a better/different Spotify API
             api_url = f"https://api.spotifydown.com/search?q={clean_title}" 
             
             async with session.get(api_url) as resp:
@@ -147,7 +147,7 @@ async def spotify_fallback_download(title: str) -> str:
         LOGGER.error(f"Spotify fallback error: {str(e)}")
     return None
 
-# 🎵 4. JIOSAAVN SOURCE-HOPPING (SECOND FALLBACK)
+# 🎵 4. JIOSAAVN SOURCE-HOPPING (✅ Fixed with config.JIOSAAVN_API)
 async def jiosaavn_fallback_download(title: str) -> str:
     if not title: return None
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -158,7 +158,8 @@ async def jiosaavn_fallback_download(title: str) -> str:
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"https://saavn.dev/api/search/songs?query={clean_title}") as resp:
+            # ✅ Using the API from config.py
+            async with session.get(f"{config.JIOSAAVN_API}{clean_title}") as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     if data.get("success") and data.get("data", {}).get("results"):
@@ -178,7 +179,7 @@ async def jiosaavn_fallback_download(title: str) -> str:
         LOGGER.error(f"JioSaavn fallback error: {str(e)}")
     return None
 
-# 🎵 5. SOUNDCLOUD SOURCE-HOPPING (ULTIMATE FALLBACK)
+# 🎵 5. SOUNDCLOUD SOURCE-HOPPING
 async def soundcloud_fallback_download(title: str) -> str:
     if not title: return None
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -216,7 +217,6 @@ async def download_song(link: str, title: str = None) -> str:
     if not video_id or len(video_id) < 3:
         return None
         
-    # Auto-fetch title if play.py didn't send it
     if not title:
         try:
             search = VideosSearch(video_id, limit=1)
