@@ -89,8 +89,8 @@ async def get_thumb(videoid, user_id, user_name):
         
         u_photo = await download_user_photo(user_id)
         if u_photo:
-            # YAHAN CHANGE KIYA HAI: User photo par GaussianBlur(3) apply kiya hai
-            u_img_blurred = Image.open(u_photo).resize((450, 450)).filter(ImageFilter.GaussianBlur(3))
+            # YAHAN CHANGE KIYA HAI: Blur value ko 6 kar diya hai 👇
+            u_img_blurred = Image.open(u_photo).resize((450, 450)).filter(ImageFilter.GaussianBlur(6))
             u_img_glowing, u_offset = get_glowing_circle(u_img_blurred)
             background.paste(u_img_glowing, (1350 - u_offset, 250 - u_offset), u_img_glowing)
 
