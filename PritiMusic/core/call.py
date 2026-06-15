@@ -59,6 +59,12 @@ FORCE_JOIN_LINKS = [
     "https://t.me/betabot_support",
 ]
 
+# ==========================================
+# 🎧 DOLBY-LIKE SWEET SOUND EQ PARAMETERS
+# ==========================================
+# Yeh filter clarity badhayega, stereo wide karega aur bass/treble sweet karega
+DOLBY_EQ = "-af \"crystalizer=i=1.5,extrastereo=m=1.3,bass=g=4:f=110:w=0.3,treble=g=2:f=8000:w=0.5\""
+
 def get_random_img(img_list):
     if img_list:
         if isinstance(img_list, list):
@@ -88,8 +94,11 @@ class Call(PyTgCalls):
         self.active_clients = {} 
 
     async def _safe_change_stream(self, client, chat_id, file_path, video=False, extra_args=""):
+        # Combine existing extra_args (like seek offsets) with our Dolby EQ
+        final_args = f"{extra_args} {DOLBY_EQ}".strip() if extra_args else DOLBY_EQ
+        
         if not video:
-            stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH, ffmpeg_parameters=extra_args)
+            stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH, ffmpeg_parameters=final_args)
             await client.play(chat_id, stream)
             return
 
@@ -98,7 +107,7 @@ class Call(PyTgCalls):
                 file_path, 
                 audio_parameters=AudioQuality.HIGH, 
                 video_parameters=VideoQuality.HD_720p, 
-                ffmpeg_parameters=extra_args
+                ffmpeg_parameters=final_args
             )
             await client.play(chat_id, stream)
         except Exception as e:
@@ -107,20 +116,21 @@ class Call(PyTgCalls):
                 file_path, 
                 audio_parameters=AudioQuality.HIGH, 
                 video_parameters=VideoQuality.SD_480p, 
-                ffmpeg_parameters=extra_args
+                ffmpeg_parameters=final_args
             )
             await client.play(chat_id, stream)
 
     async def _safe_join_call(self, assistant_to_join, chat_id, file_path, video=False):
         if not video:
-            stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH)
+            stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH, ffmpeg_parameters=DOLBY_EQ)
             return await assistant_to_join.play(chat_id, stream)
 
         try: 
             stream = MediaStream(
                 file_path, 
                 audio_parameters=AudioQuality.HIGH, 
-                video_parameters=VideoQuality.HD_720p
+                video_parameters=VideoQuality.HD_720p,
+                ffmpeg_parameters=DOLBY_EQ
             )
             await assistant_to_join.play(chat_id, stream)
         except Exception as e:
@@ -128,7 +138,8 @@ class Call(PyTgCalls):
             stream = MediaStream(
                 file_path, 
                 audio_parameters=AudioQuality.HIGH, 
-                video_parameters=VideoQuality.SD_480p
+                video_parameters=VideoQuality.SD_480p,
+                ffmpeg_parameters=DOLBY_EQ
             )
             await assistant_to_join.play(chat_id, stream)
 
