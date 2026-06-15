@@ -35,7 +35,7 @@ def create_btn(text, callback_data=None, url=None, style=ButtonStyle.PRIMARY, no
 
 def add_me_button(bot_username, style):
     return create_btn(
-        text="『 ♡ 𝐀ᴅᴅ 𝐌є 𝐁ᴀʙʏ ♡ 』",
+        text="『𝐀ᴅᴅ 𝐌є 𝐁ᴀʙʏ』",
         url=f"https://t.me/{bot_username}?startgroup=true",
         style=style
     )
@@ -64,7 +64,7 @@ def track_markup(_, videoid, user_id, channel, fplay):
 def stream_markup_timer(_, chat_id, played, dur):
     s_map = get_style_map()
     buttons = [
-        [create_btn(text=get_bar(played, dur), callback_data="GetTimer", style=ButtonStyle.SECONDARY, no_emoji=True)],
+        [create_btn(text=get_bar(played, dur), callback_data="GetTimer", style=s_map[1], no_emoji=True)],
         [
             create_btn(text="▷", callback_data=f"ADMIN Resume|{chat_id}", style=s_map[3], no_emoji=True),
             create_btn(text="II", callback_data=f"ADMIN Pause|{chat_id}", style=s_map[3], no_emoji=True),
@@ -141,7 +141,7 @@ def queue_markup(_, videoid, chat_id, bot_username):
         [
             create_btn(text="II ᴘᴀᴜsᴇ", callback_data=f"ADMIN Pause|{chat_id}", style=s_map[3], no_emoji=True),
             create_btn(text="▢ sᴛᴏᴘ", callback_data=f"ADMIN Stop|{chat_id}", style=s_map[3], no_emoji=True),
-            create_btn(text="sᴋɪ multip ‣‣I", callback_data=f"ADMIN Skip|{chat_id}", style=s_map[3], no_emoji=True),
+            create_btn(text="sᴋɪᴘ ‣‣I", callback_data=f"ADMIN Skip|{chat_id}", style=s_map[3], no_emoji=True),
         ],
         [
             create_btn(text="▷ ʀᴇsᴜᴍᴇ", callback_data=f"ADMIN Resume|{chat_id}", style=s_map[2], no_emoji=True),
@@ -169,7 +169,7 @@ def stream_markup2(_, chat_id, bot_username):
 def stream_markup_timer2(_, chat_id, played, dur):
     s_map = get_style_map()
     buttons = [
-        [create_btn(text=get_bar(played, dur), callback_data="GetTimer", style=ButtonStyle.SECONDARY, no_emoji=True)],
+        [create_btn(text=get_bar(played, dur), callback_data="GetTimer", style=s_map[1], no_emoji=True)],
         [
             create_btn(text="▷", callback_data=f"ADMIN Resume|{chat_id}", style=s_map[3], no_emoji=True),
             create_btn(text="II", callback_data=f"ADMIN Pause|{chat_id}", style=s_map[3], no_emoji=True),
@@ -238,7 +238,7 @@ def panel_markup_3(_, videoid, chat_id):
 def panel_markup_4(_, vidid, chat_id, played, dur):
     s_map = get_style_map()
     buttons = [
-        [create_btn(text=get_bar(played, dur), callback_data="GetTimer", style=ButtonStyle.SECONDARY, no_emoji=True)],
+        [create_btn(text=get_bar(played, dur), callback_data="GetTimer", style=s_map[1], no_emoji=True)],
         [
             create_btn(text="II ᴘᴀᴜsᴇ", callback_data=f"ADMIN Pause|{chat_id}", style=s_map[3], no_emoji=True),
             create_btn(text="▢ sᴛᴏᴘ ▢", callback_data=f"ADMIN Stop|{chat_id}", style=s_map[3], no_emoji=True),
