@@ -5,7 +5,6 @@ import logging
 from pyrogram import filters, Client
 from pyrogram.enums import ChatType, ParseMode, ButtonStyle
 from pyrogram.types import InlineKeyboardMarkup, Message, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton
-# 👇 Yahan nayi library aa gayi hai
 from youtubesearchpython.__future__ import VideosSearch
 
 import config
@@ -401,26 +400,15 @@ async def start_pm(client, message: Message, _):
         )
         caption = f"<blockquote expandable>{formatted_text}</blockquote>"
 
-    # ✅ 2. RANDOM EFFECT LOGIC [FIXED]
-    if raw_effect:
-        effect = random.choice(raw_effect.split("|||"))
-    else:
-        effect = random.choice(EFFECT_ID)
-    
-    # 🔥 CRITICAL FIX: Convert Effect ID to INT to prevent Crash
-    try:
-        effect = int(effect)
-    except:
-        effect = None
-
+    # 🔥 FIX: Removed message_effect_id entirely to prevent Pyrogram TypeError
     if start_video:
         try:
-            return await message.reply_video(start_video, caption=caption, reply_markup=markup, message_effect_id=effect, has_spoiler=True, parse_mode=ParseMode.HTML)
+            return await message.reply_video(start_video, caption=caption, reply_markup=markup, has_spoiler=True, parse_mode=ParseMode.HTML)
         except:
             pass
     
     photo = start_img if start_img else get_random_start_image()
-    await message.reply_photo(photo, caption=caption, reply_markup=markup, message_effect_id=effect, has_spoiler=True, parse_mode=ParseMode.HTML)
+    await message.reply_photo(photo, caption=caption, reply_markup=markup, has_spoiler=True, parse_mode=ParseMode.HTML)
 
 # =====================================================================
 # START COMMAND (GROUP)
@@ -539,18 +527,6 @@ async def home_back_handler(client, CallbackQuery, _):
         formatted_text = (f"Hey {user_mention} 👋\n\n⦿ THIS IS {bot_mention} !\n\n➻ A FAST & POWERFUL TELEGRAM MUSIC PLAYER BOT.\n\n──────────────────\n✦ POWERED BY » {bot_mention}")
         caption = f"<blockquote expandable>{formatted_text}</blockquote>"
 
-    # ✅ Random Effect Logic (Callback)
-    if raw_effect:
-        effect = random.choice(raw_effect.split("|||"))
-    else:
-        effect = random.choice(EFFECT_ID)
-    
-    # 🔥 FIX: Convert to Int
-    try:
-        effect = int(effect)
-    except:
-        effect = None
-
     try:
         if start_video:
             await CallbackQuery.edit_message_media(media=InputMediaVideo(media=start_video, caption=caption), reply_markup=markup)
@@ -562,11 +538,12 @@ async def home_back_handler(client, CallbackQuery, _):
             await CallbackQuery.message.delete()
         except:
             pass
+        # 🔥 FIX: Removed message_effect_id entirely here as well
         if start_video:
-            await CallbackQuery.message.reply_video(start_video, caption=caption, reply_markup=markup, message_effect_id=effect, has_spoiler=True, parse_mode=ParseMode.HTML)
+            await CallbackQuery.message.reply_video(start_video, caption=caption, reply_markup=markup, has_spoiler=True, parse_mode=ParseMode.HTML)
         else:
             photo = start_img if start_img else get_random_start_image()
-            await CallbackQuery.message.reply_photo(photo, caption=caption, reply_markup=markup, message_effect_id=effect, has_spoiler=True, parse_mode=ParseMode.HTML)
+            await CallbackQuery.message.reply_photo(photo, caption=caption, reply_markup=markup, has_spoiler=True, parse_mode=ParseMode.HTML)
 
 # =====================================================================
 # MANAGEMENT & SETTINGS
