@@ -75,15 +75,53 @@ async def _clear_(chat_id):
 class Call(PyTgCalls):
     def __init__(self):
         self.userbot1 = Client(
-            name="LuckyAss1",
+            name="MahiAss1",
             api_id=config.API_ID,
             api_hash=config.API_HASH,
             session_string=str(config.STRING1),
         )
-        self.one = PyTgCalls(
-            self.userbot1,
-            cache_duration=100,
-        )
+        self.one = PyTgCalls(self.userbot1, cache_duration=100)
+
+        self.two = None
+        if getattr(config, "STRING2", None):
+            self.userbot2 = Client(
+                name="MahiAss2",
+                api_id=config.API_ID,
+                api_hash=config.API_HASH,
+                session_string=str(config.STRING2),
+            )
+            self.two = PyTgCalls(self.userbot2, cache_duration=100)
+
+        self.three = None
+        if getattr(config, "STRING3", None):
+            self.userbot3 = Client(
+                name="MahiAss3",
+                api_id=config.API_ID,
+                api_hash=config.API_HASH,
+                session_string=str(config.STRING3),
+            )
+            self.three = PyTgCalls(self.userbot3, cache_duration=100)
+
+        self.four = None
+        if getattr(config, "STRING4", None):
+            self.userbot4 = Client(
+                name="MahiAss4",
+                api_id=config.API_ID,
+                api_hash=config.API_HASH,
+                session_string=str(config.STRING4),
+            )
+            self.four = PyTgCalls(self.userbot4, cache_duration=100)
+
+        self.five = None
+        if getattr(config, "STRING5", None):
+            self.userbot5 = Client(
+                name="MahiAss5",
+                api_id=config.API_ID,
+                api_hash=config.API_HASH,
+                session_string=str(config.STRING5),
+            )
+            self.five = PyTgCalls(self.userbot5, cache_duration=100)
+
         self.custom_assistants = {} 
         self.active_clients = {} 
 
@@ -510,7 +548,7 @@ class Call(PyTgCalls):
                             db[chat_id][0]["markup"] = "tg"
                     except: pass
                     
-                elif videoid == "soundcloud":
+                elif videoid in ["soundcloud", "spotify", "apple", "jiosaavn"]:
                     button = telegram_markup(_, chat_id)
                     try:
                         run = await chat_client.send_photo(
@@ -539,15 +577,27 @@ class Call(PyTgCalls):
 
     async def ping(self):
         pings = []
-        if config.STRING1: pings.append(self.one.ping)
+        if getattr(config, "STRING1", None): pings.append(self.one.ping)
+        if getattr(config, "STRING2", None): pings.append(self.two.ping)
+        if getattr(config, "STRING3", None): pings.append(self.three.ping)
+        if getattr(config, "STRING4", None): pings.append(self.four.ping)
+        if getattr(config, "STRING5", None): pings.append(self.five.ping)
         return str(round(sum(pings) / len(pings), 3)) if pings else "0.0"
 
     async def start(self):
-        LOGGER(__name__).info("Starting PyTgCalls Client...\n")
-        if config.STRING1: await self.one.start()
+        LOGGER(__name__).info("Starting PyTgCalls Clients...\n")
+        if getattr(config, "STRING1", None):
+            await self.one.start()
+        if getattr(config, "STRING2", None):
+            await self.two.start()
+        if getattr(config, "STRING3", None):
+            await self.three.start()
+        if getattr(config, "STRING4", None):
+            await self.four.start()
+        if getattr(config, "STRING5", None):
+            await self.five.start()
 
     async def decorators(self):
-        @self.one.on_update()
         async def stream_handler(client, update):
             try:
                 c_id = getattr(update, "chat_id", None)
@@ -562,5 +612,11 @@ class Call(PyTgCalls):
                     await self.change_stream(client, c_id)
             except Exception as e:
                 LOGGER(__name__).error(f"Stream handler error: {e}")
+
+        if getattr(config, "STRING1", None): self.one.on_update()(stream_handler)
+        if getattr(config, "STRING2", None): self.two.on_update()(stream_handler)
+        if getattr(config, "STRING3", None): self.three.on_update()(stream_handler)
+        if getattr(config, "STRING4", None): self.four.on_update()(stream_handler)
+        if getattr(config, "STRING5", None): self.five.on_update()(stream_handler)
 
 Lucky = Call()
