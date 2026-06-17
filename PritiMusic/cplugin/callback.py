@@ -36,9 +36,10 @@ def get_random_img(img_list):
 # CALLBACK HANDLERS
 # =====================================================================
 
-@app.on_callback_query(filters.regex("settingsback_helper") & ~BANNED_USERS)
+# 🟢 THE FIX 1: @app ko @Client mein badal diya
+@Client.on_callback_query(filters.regex("settingsback_helper") & ~BANNED_USERS)
 @languageCB
-async def settings_back_helper(client, CallbackQuery, _):
+async def settings_back_helper(client: Client, CallbackQuery, _):
     await CallbackQuery.answer()
     img = get_random_img(config.START_IMG_URL)
     await CallbackQuery.edit_message_media(
@@ -46,9 +47,10 @@ async def settings_back_helper(client, CallbackQuery, _):
         reply_markup=InlineKeyboardMarkup(private_panel(_))
     )
 
-@app.on_callback_query(filters.regex("ADMIN") & ~BANNED_USERS)
+# 🟢 THE FIX 2: @app ko @Client mein badla taaki CLONE BOTS bhi buttons sunein!
+@Client.on_callback_query(filters.regex("ADMIN") & ~BANNED_USERS)
 @languageCB
-async def del_back_playlist(client, CallbackQuery, _):
+async def del_back_playlist(client: Client, CallbackQuery, _):
     bot = await client.get_me()
     callback_data = CallbackQuery.data.strip()
     callback_request = callback_data.split(None, 1)[1]
@@ -136,26 +138,34 @@ async def del_back_playlist(client, CallbackQuery, _):
         if not check: return await CallbackQuery.answer("Queue khali hai!", show_alert=True)
         
         await CallbackQuery.answer()
+        
         if command == "Skip":
             popped = check.pop(0)
             if popped: await auto_clean(popped)
             if not check:
                 await CallbackQuery.message.reply_text(_["admin_6"].format(mention, CallbackQuery.message.chat.title), reply_markup=close_markup(_))
                 return await Lucky.stop_stream(chat_id)
-        
-        db[chat_id][0]["played"] = 0
-        img = await get_thumb(check[0]["vidid"], user_id, user_name) or get_random_img(PLAYLIST_IMG_URL)
-        await Lucky.skip_stream(chat_id, check[0]["file"], video=True if check[0]["streamtype"]=="video" else False)
-        
-        run = await CallbackQuery.message.reply_photo(
-            photo=img,
-            caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{check[0]['vidid']}", check[0]['title'][:23], check[0]['dur'], check[0]['by']),
-            reply_markup=InlineKeyboardMarkup(stream_markup(_, chat_id))
-        )
-        if chat_id in db and db[chat_id]:
-            db[chat_id][0]["mystic"] = run
-            db[chat_id][0]["markup"] = "stream"
-        await CallbackQuery.edit_message_text(f"➻ sᴛʀᴇᴀᴍ {command.lower()}ᴇᴅ 🎄", reply_markup=close_markup(_))
+            
+            # 🟢 THE FIX 3: Safe Skip logic for clones (Same as our updated skip.py)
+            clients = await Lucky.get_active_clients(chat_id)
+            pytgcalls_client = clients[0] if clients else Lucky.one
+            await Lucky.change_stream(pytgcalls_client, chat_id)
+            return await CallbackQuery.edit_message_text(f"➻ sᴛʀᴇᴀᴍ sᴋɪᴩᴩᴇᴅ 🎄", reply_markup=close_markup(_))
+            
+        else: # Replay Logic
+            db[chat_id][0]["played"] = 0
+            img = await get_thumb(check[0]["vidid"], user_id, user_name) or get_random_img(PLAYLIST_IMG_URL)
+            await Lucky.skip_stream(chat_id, check[0]["file"], video=True if check[0]["streamtype"]=="video" else False)
+            
+            run = await CallbackQuery.message.reply_photo(
+                photo=img,
+                caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{check[0]['vidid']}", check[0]['title'][:23], check[0]['dur'], check[0]['by']),
+                reply_markup=InlineKeyboardMarkup(stream_markup(_, chat_id))
+            )
+            if chat_id in db and db[chat_id]:
+                db[chat_id][0]["mystic"] = run
+                db[chat_id][0]["markup"] = "stream"
+            await CallbackQuery.edit_message_text(f"➻ sᴛʀᴇᴀᴍ ʀᴇᴩʟᴀʏᴇᴅ 🎄", reply_markup=close_markup(_))
 
 # --- TIMER MARKUP UPDATER ---
 async def markup_timer():
