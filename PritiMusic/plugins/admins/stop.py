@@ -11,8 +11,7 @@ from PritiMusic.utils.decorators import AdminRightsCheck
 from PritiMusic.utils.inline import close_markup
 from config import BANNED_USERS
 
-# 🟢 THE FIX 1: @app ko @Client mein badal diya taaki clones bhi kaam karein
-@Client.on_message(
+@app.on_message(
     filters.command(
         ["end", "stop", "cend", "cstop"], 
         # 🟢 THE FIX: Removed the empty string "" to prevent random triggers
