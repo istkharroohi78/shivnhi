@@ -1,6 +1,5 @@
-from pyrogram import filters, Client
+from pyrogram import filters
 from pyrogram.types import Message
-from pyrogram.enums import ChatMemberStatus # 🟢 Zaroori Import
 
 import config
 from PritiMusic import app
@@ -16,27 +15,17 @@ from PritiMusic.utils.inline import close_markup
 from config import BANNED_USERS, adminlist
 
 
-# 🟢 THE FIX 1: @app ko @Client se replace kiya + Prefixes lagaye
-@Client.on_message(filters.command(["auth", "cauth"], prefixes=["/", "!", "%", ",", ".", "@", "#"]) & filters.group & ~BANNED_USERS)
+@app.on_message(
+    filters.command(["auth"], prefixes=["/", "!"]) & filters.group & ~BANNED_USERS
+)
 @AdminActual
-async def auth(client: Client, message: Message, _):
-    
-    # 🟢 THE FIX 2: BULLETPROOF ADMIN CHECK
-    if message.from_user.id not in config.SUDOERS:
-        try:
-            member = await client.get_chat_member(message.chat.id, message.from_user.id)
-            if member.status not in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
-                return await message.reply_text("❌ **Sirf Admins he is command ko use kar sakte hain!**")
-        except Exception:
-            return await message.reply_text("❌ **Error: Admin rights verify nahi ho paye.**")
-
+async def auth(client, message: Message, _):
     if not message.reply_to_message:
         if len(message.command) != 2:
             return await message.reply_text(_["general_1"])
             
     user = await extract_user(message)
     
-    # Int to alpha is usually synchronous, added a safe fallback just in case
     try:
         token = await int_to_alpha(user.id)
     except:
@@ -69,19 +58,11 @@ async def auth(client: Client, message: Message, _):
         return await message.reply_text(_["auth_3"].format(user.mention))
 
 
-@Client.on_message(filters.command(["unauth", "cunauth"], prefixes=["/", "!", "%", ",", ".", "@", "#"]) & filters.group & ~BANNED_USERS)
+@app.on_message(
+    filters.command(["unauth"], prefixes=["/", "!"]) & filters.group & ~BANNED_USERS
+)
 @AdminActual
-async def unauthusers(client: Client, message: Message, _):
-    
-    # 🟢 THE FIX 2: BULLETPROOF ADMIN CHECK
-    if message.from_user.id not in config.SUDOERS:
-        try:
-            member = await client.get_chat_member(message.chat.id, message.from_user.id)
-            if member.status not in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
-                return await message.reply_text("❌ **Sirf Admins he is command ko use kar sakte hain!**")
-        except Exception:
-            return await message.reply_text("❌ **Error: Admin rights verify nahi ho paye.**")
-
+async def unauthusers(client, message: Message, _):
     if not message.reply_to_message:
         if len(message.command) != 2:
             return await message.reply_text(_["general_1"])
@@ -104,12 +85,12 @@ async def unauthusers(client: Client, message: Message, _):
     else:
         return await message.reply_text(_["auth_5"].format(user.mention))
 
-# Ze0
-@Client.on_message(
-    filters.command(["authlist", "authusers", "cauthlist"], prefixes=["/", "!", "%", ",", ".", "@", "#"]) & filters.group & ~BANNED_USERS
+
+@app.on_message(
+    filters.command(["authlist", "authusers"], prefixes=["/", "!"]) & filters.group & ~BANNED_USERS
 )
 @language
-async def authusers(client: Client, message: Message, _):
+async def authusers(client, message: Message, _):
     _wtf = await get_authuser_names(message.chat.id)
     if not _wtf:
         return await message.reply_text(_["setting_4"])
@@ -123,8 +104,8 @@ async def authusers(client: Client, message: Message, _):
             admin_id = _umm["admin_id"]
             admin_name = _umm["admin_name"]
             try:
-                # 🟢 THE FIX 3: app.get_users ko client.get_users banaya taaki Clones error na dein!
-                user = (await client.get_users(user_id)).first_name
+                # Wapas app.get_users kar diya hai Main Bot ke liye
+                user = (await app.get_users(user_id)).first_name
                 j += 1
             except:
                 continue
