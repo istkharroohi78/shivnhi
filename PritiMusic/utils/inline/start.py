@@ -19,13 +19,20 @@ def get_style_map():
     # Row me buttons ke hisaab se random color assign hoga
     return {1: styles[0], 2: styles[1], 3: styles[2]}
 
-# 🔘 Smart Button Creator (Now with user_id support)
+# 🔘 Smart Button Creator (Fixed user_id link)
 def create_btn(text, cb=None, url=None, user_id=None, style=ButtonStyle.PRIMARY, no_emoji=False):
     kwargs = {"text": text, "style": style}
-    if cb: kwargs["callback_data"] = cb
-    if url: kwargs["url"] = url
-    if user_id: kwargs["user_id"] = user_id
-    if not no_emoji: kwargs["icon_custom_emoji_id"] = random.choice(PREMIUM_EMOJIS)
+    if cb: 
+        kwargs["callback_data"] = cb
+    # User profile kholne ke liye direct link
+    if user_id: 
+        kwargs["url"] = f"tg://user?id={user_id}"
+    elif url: 
+        kwargs["url"] = url
+        
+    if not no_emoji: 
+        kwargs["icon_custom_emoji_id"] = random.choice(PREMIUM_EMOJIS)
+        
     return InlineKeyboardButton(**kwargs)
 
 
@@ -77,7 +84,7 @@ def private_panel(_):
                 style=s_map[2]
             ),
             create_btn(
-                text=" sᴏᴜʀᴄᴇ", 
+                text="sᴏᴜʀᴄᴇ", 
                 cb="gib_source", 
                 style=s_map[2]
             )
@@ -85,7 +92,7 @@ def private_panel(_):
         [
             create_btn(
                 text=_["S_B_4"], 
-                cb="settings_back_helper", 
+                cb="settingsback_helper", 
                 style=s_map[1]
             )
         ],
@@ -155,3 +162,4 @@ def about_panel(_):
         ]
     ]
     return buttons
+    
