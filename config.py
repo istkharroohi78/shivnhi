@@ -15,7 +15,7 @@ OWNER_USERNAME = getenv("OWNER_USERNAME", "")
 BOT_USERNAME = getenv("BOT_USERNAME", "")
 BOT_NAME = getenv("BOT_NAME", "")
 ASSUSERNAME = getenv("ASSUSERNAME", "")
-BOT_LINK = getenv("BOT_LINK", "https://t.me/clone_MUSICrobot")
+BOT_LINK = getenv("BOT_LINK", "https://t.me/Kavya_Music_Robot")
 
 MONGO_DB_URI = getenv("MONGO_DB_URI")
 
