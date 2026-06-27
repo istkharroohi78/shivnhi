@@ -6,21 +6,19 @@ from pyrogram.types import Message
 from pytgcalls.types import UpdatedGroupCallParticipant, GroupCallParticipant
 from pytgcalls import filters as fl
 
-# 🔥 CHANGED HERE - Folder name updated (Agar folder ka naam alag hai to yahan change kar lena)
 from PritiMusic import app, userbot
-from PritiMusic.core.call import Lucky # 🔥 CHANGED HERE - Istu ki jagah Lucky
-from PritiMusic.utils.database import is_vc_logger, set_vc_logger, get_served_chats
+from PritiMusic.core.call import Lucky 
 from PritiMusic.misc import SUDOERS
 from config import adminlist
 
 logger = logging.getLogger(__name__)
 
+# In-Memory Database (Database ki error hatane ke liye)
 enabled_chats: Set[int] = set()
 user_join_count: Dict[tuple, int] = {}
 user_cache: Dict[int, tuple] = {}
 vc_participants_cache: Dict[int, list] = {}
 DELETE_DELAY = 7
-
 
 async def delete_message_after_delay(chat_id: int, message_id: int):
     try:
@@ -28,7 +26,6 @@ async def delete_message_after_delay(chat_id: int, message_id: int):
         await app.delete_messages(chat_id, message_id)
     except:
         pass
-
 
 async def get_user_info(chat_id: int, user_id: int) -> tuple:
     if user_id in user_cache:
@@ -51,7 +48,6 @@ async def get_user_info(chat_id: int, user_id: int) -> tuple:
     user_cache[user_id] = (name, username)
     return name, username
 
-
 async def send_join_notification(chat_id: int, user_id: int):
     key = (chat_id, user_id)
     user_join_count[key] = user_join_count.get(key, 0) + 1
@@ -73,7 +69,6 @@ async def send_join_notification(chat_id: int, user_id: int):
     msg = await app.send_message(chat_id, text)
     asyncio.create_task(delete_message_after_delay(chat_id, msg.id))
 
-
 async def send_leave_notification(chat_id: int, user_id: int):
     name, username = await get_user_info(chat_id, user_id)
     mention = f'<a href="tg://user?id={user_id}">{name or "User"}</a>'
@@ -88,7 +83,6 @@ async def send_leave_notification(chat_id: int, user_id: int):
     msg = await app.send_message(chat_id, text)
     asyncio.create_task(delete_message_after_delay(chat_id, msg.id))
 
-
 async def is_admin(chat_id: int, user_id: int) -> bool:
     try:
         if user_id in SUDOERS:
@@ -101,8 +95,6 @@ async def is_admin(chat_id: int, user_id: int) -> bool:
     except:
         return False
 
-
-# 🔥 CHANGED HERE - Istu.one se badal kar Lucky.one kar diya gaya hai
 @Lucky.one.on_update(fl.call_participant(GroupCallParticipant.Action.JOINED))
 @Lucky.two.on_update(fl.call_participant(GroupCallParticipant.Action.JOINED))
 @Lucky.three.on_update(fl.call_participant(GroupCallParticipant.Action.JOINED))
@@ -112,13 +104,12 @@ async def participant_join(_, update: UpdatedGroupCallParticipant):
     chat_id = update.chat_id
     user_id = update.participant.user_id
 
-    if not await is_vc_logger(chat_id):
+    # Check from local memory instead of database
+    if chat_id not in enabled_chats:
         return
 
     await send_join_notification(chat_id, user_id)
 
-
-# 🔥 CHANGED HERE - Yahan bhi Lucky add kiya gaya hai
 @Lucky.one.on_update(fl.call_participant(GroupCallParticipant.Action.LEFT))
 @Lucky.two.on_update(fl.call_participant(GroupCallParticipant.Action.LEFT))
 @Lucky.three.on_update(fl.call_participant(GroupCallParticipant.Action.LEFT))
@@ -128,30 +119,13 @@ async def participant_left(_, update: UpdatedGroupCallParticipant):
     chat_id = update.chat_id
     user_id = update.participant.user_id
 
-    if not await is_vc_logger(chat_id):
+    # Check from local memory instead of database
+    if chat_id not in enabled_chats:
         return
 
     await send_leave_notification(chat_id, user_id)
 
-
-async def setup_vc_logger():
-    try:
-        await asyncio.sleep(5)
-        chats = await get_served_chats()
-
-        for chat in chats:
-            chat_id = chat.get("chat_id")
-            if chat_id:
-                if await is_vc_logger(chat_id):
-                    enabled_chats.add(chat_id)
-
-        logger.info("VC Logger setup done")
-
-    except Exception as e:
-        logger.error(f"Setup VC logger error: {e}")
-
-
-# 🔥 CHANGED HERE - Clone bot ke commands properly work karein isliye @Client use kiya hai
+# 🔥 CHANGED HERE - Clone bots ke liye @Client.on_message lagaya gaya hai
 @Client.on_message(filters.command(["vclogger", "vclog"]) & filters.group)
 async def vclogger_cmd(client: Client, message: Message):
     chat_id = message.chat.id
@@ -160,7 +134,7 @@ async def vclogger_cmd(client: Client, message: Message):
         return await message.reply_text("**❌ ᴀᴅᴍɪɴ ᴏɴʟʏ!**")
 
     if len(message.command) < 2:
-        status = await is_vc_logger(chat_id)
+        status = chat_id in enabled_chats
         await message.reply_text(
             f"**📊 ᴠᴄ ʟᴏɢɢᴇʀ :** {'✅ ON' if status else '❌ OFF'}\n\n"
             "**ᴄᴏᴍᴍᴀɴᴅs :**\n\n**• /vclogger on**\n•** /vclogger off**"
@@ -170,22 +144,14 @@ async def vclogger_cmd(client: Client, message: Message):
     action = message.command[1].lower()
 
     if action == "on":
-        await set_vc_logger(chat_id, True)
         enabled_chats.add(chat_id)
         await message.reply_text("**✅ ᴠᴄ ʟᴏɢɢᴇʀ ᴇɴᴀʙʟᴇᴅ!**")
 
     elif action == "off":
-        await set_vc_logger(chat_id, False)
         enabled_chats.discard(chat_id)
         user_join_count.clear()
-        await message.reply_text("**ᴠᴄ ʟᴏɢɢᴇʀ ᴅɪsᴀʙʟᴇᴅ!**")
+        await message.reply_text("**❌ ᴠᴄ ʟᴏɢɢᴇʀ ᴅɪsᴀʙʟᴇᴅ!**")
 
     else:
         await message.reply_text("**ᴜsᴇ:** /vclogger on | off")
-
-
-try:
-    asyncio.create_task(setup_vc_logger())
-except Exception as e:
-    logger.error(f"Failed to schedule setup: {e}")
-  
+        
