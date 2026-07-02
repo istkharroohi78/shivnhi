@@ -18,6 +18,10 @@ LOGGER = logging.getLogger(__name__)
 API_URL = os.environ.get("SHRUTI_API_URL", "https://api.shrutibots.site")
 API_KEY = os.environ.get("SHRUTI_API_KEY", "ShrutiBotsC0WH1GowF2HkGoKv4F3y")
 
+# Worker fallback API (kept configurable through env for production overrides)
+WORKER_FALLBACK_API_URL = os.getenv("WORKER_FALLBACK_API_URL", "https://youtubenewapi.skybotsdeveloper.workers.dev")
+WORKER_FALLBACK_API_KEY = os.getenv("WORKER_FALLBACK_API_KEY", "itsmesid")
+
 def time_to_seconds(time_str):
     stringt = str(time_str)
     return sum(int(x) * 60 ** i for i, x in enumerate(reversed(stringt.split(":"))))
@@ -82,6 +86,52 @@ async def api_download(video_id: str, download_type: str, title: str = None) -> 
             except: pass
         return None
 
+# 🟢 NEW: Worker Fallback Downloader
+async def worker_api_download(video_id: str, download_type: str, title: str = None) -> str:
+    if not WORKER_FALLBACK_API_URL or not WORKER_FALLBACK_API_KEY:
+        return None
+
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    filename = get_safe_filename(title, f"wk_{video_id}")
+    ext = "mp4" if download_type == "video" else "mp3"
+    file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{ext}")
+
+    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+        return file_path
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Depending on the worker's exact routing, hitting the base or /download
+            # Adjusting parameters to mirror the primary API structure
+            params = {
+                "url": video_id, 
+                "type": "audio" if download_type == "audio" else "video", 
+                "api_key": WORKER_FALLBACK_API_KEY
+            }
+            async with session.get(
+                f"{WORKER_FALLBACK_API_URL}/download", 
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=600)
+            ) as resp:
+                if resp.status != 200:
+                    LOGGER.error(f"Worker Fallback API Error: Status {resp.status}")
+                    return None
+                
+                with open(file_path, "wb") as f:
+                    async for chunk in resp.content.iter_chunked(131072):
+                        f.write(chunk)
+                        
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+            LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{title}' from Worker API!")
+            return file_path
+        return None
+    except Exception as e:
+        LOGGER.error(f"Worker Fallback API Download Error: {e}")
+        if os.path.exists(file_path):
+            try: os.remove(file_path)
+            except: pass
+        return None
+
 async def ytdl_fallback_download(link: str, download_type: str, title: str = None) -> str:
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     video_id = extract_video_id(link)
@@ -116,6 +166,7 @@ async def ytdl_fallback_download(link: str, download_type: str, title: str = Non
     try:
         await _async_run(yt_dlp.YoutubeDL(ydl_opts).download, [link])
         if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+            LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{title}' from yt-dlp!")
             return file_path
         return None
     except Exception as e:
@@ -226,22 +277,35 @@ async def download_song(link: str, title: str = None) -> str:
         except Exception:
             pass
 
+    # 1. Primary API
     api_result = await api_download(video_id, "audio", title)
     if api_result: return api_result
     
+    LOGGER.warning(f"🔴 Shruti API failed for '{title}'. Hopping to Worker API...")
+    
+    # 2. Worker API Fallback
+    worker_result = await worker_api_download(video_id, "audio", title)
+    if worker_result: return worker_result
+
+    LOGGER.warning(f"🔴 Worker API failed for '{title}'. Hopping to yt-dlp...")
+
+    # 3. yt-dlp Fallback
     yt_result = await ytdl_fallback_download(link, "audio", title)
     if yt_result: return yt_result
     
     if title:
         LOGGER.warning(f"🔴 YouTube blocked '{title}'. Hopping to Spotify...")
+        # 4. Spotify Fallback
         sp_result = await spotify_fallback_download(title)
         if sp_result: return sp_result
 
         LOGGER.warning(f"🔴 Spotify failed. Hopping to JioSaavn...")
+        # 5. JioSaavn Fallback
         js_result = await jiosaavn_fallback_download(title)
         if js_result: return js_result
 
         LOGGER.warning(f"🔴 JioSaavn failed. Hopping to SoundCloud...")
+        # 6. SoundCloud Fallback
         sc_result = await soundcloud_fallback_download(title)
         if sc_result: return sc_result
 
@@ -261,8 +325,15 @@ async def download_video(link: str, title: str = None) -> str:
         except:
             pass
 
+    # 1. Primary API
     api_result = await api_download(video_id, "video", title)
     if api_result: return api_result
+    
+    # 2. Worker API Fallback
+    worker_result = await worker_api_download(video_id, "video", title)
+    if worker_result: return worker_result
+
+    # 3. yt-dlp Fallback
     return await ytdl_fallback_download(link, "video", title)
 
 # ----------------- YOUTUBE API CLASS -----------------
