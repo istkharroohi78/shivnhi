@@ -57,11 +57,23 @@ def track_markup(_, videoid, user_id, channel, fplay):
 
 
 def stream_markup_timer(_, chat_id, played, dur):
-    played_sec = time_to_seconds(played)
-    duration_sec = time_to_seconds(dur)
+    # Safe time calculation to prevent crashing on "Live" or invalid formats
+    try:
+        played_sec = time_to_seconds(str(played))
+        if str(dur).lower() in ["live", "unknown", "0"]:
+            duration_sec = 0
+        else:
+            duration_sec = time_to_seconds(str(dur))
+    except Exception:
+        played_sec = 0
+        duration_sec = 0
     
     total_blocks = 10
-    filled_blocks = int((played_sec / duration_sec) * total_blocks) if duration_sec != 0 else 0
+    if duration_sec > 0:
+        filled_blocks = int((played_sec / duration_sec) * total_blocks)
+    else:
+        filled_blocks = 0
+        
     filled_blocks = min(max(filled_blocks, 0), total_blocks)
     bar = "▰" * filled_blocks + "▱" * (total_blocks - filled_blocks)
 
@@ -298,11 +310,22 @@ def panel_markup_3(_, videoid, chat_id):
 
 
 def panel_markup_4(_, vidid, chat_id, played, dur):
-    played_sec = time_to_seconds(played)
-    duration_sec = time_to_seconds(dur)
+    try:
+        played_sec = time_to_seconds(str(played))
+        if str(dur).lower() in ["live", "unknown", "0"]:
+            duration_sec = 0
+        else:
+            duration_sec = time_to_seconds(str(dur))
+    except Exception:
+        played_sec = 0
+        duration_sec = 0
     
     total_blocks = 10
-    filled_blocks = int((played_sec / duration_sec) * total_blocks) if duration_sec != 0 else 0
+    if duration_sec > 0:
+        filled_blocks = int((played_sec / duration_sec) * total_blocks)
+    else:
+        filled_blocks = 0
+        
     filled_blocks = min(max(filled_blocks, 0), total_blocks)
     bar = "▰" * filled_blocks + "▱" * (total_blocks - filled_blocks)
 
@@ -330,11 +353,22 @@ def panel_markup_4(_, vidid, chat_id, played, dur):
 
 
 def panel_markup_clone(_, vidid, chat_id, played, dur):
-    played_sec = time_to_seconds(played)
-    duration_sec = time_to_seconds(dur)
+    try:
+        played_sec = time_to_seconds(str(played))
+        if str(dur).lower() in ["live", "unknown", "0"]:
+            duration_sec = 0
+        else:
+            duration_sec = time_to_seconds(str(dur))
+    except Exception:
+        played_sec = 0
+        duration_sec = 0
     
     total_blocks = 10
-    filled_blocks = int((played_sec / duration_sec) * total_blocks) if duration_sec != 0 else 0
+    if duration_sec > 0:
+        filled_blocks = int((played_sec / duration_sec) * total_blocks)
+    else:
+        filled_blocks = 0
+        
     filled_blocks = min(max(filled_blocks, 0), total_blocks)
     bar = "▰" * filled_blocks + "▱" * (total_blocks - filled_blocks)
 
@@ -355,7 +389,7 @@ def panel_markup_clone(_, vidid, chat_id, played, dur):
             create_btn(text="<- 20s", cb=f"ADMIN SeekBack|{chat_id}", style=s_map[4], no_emoji=True),
             create_btn(text="20s + ->", cb=f"ADMIN SeekForward|{chat_id}", style=s_map[4], no_emoji=True),
         ],
-                [
+        [
             create_btn(text="❖ 𝐀ᴜᴛᴏ𝐏ʟᴀʏ ❖", cb=f"ADMIN Autoplay|{chat_id}", style=s_map[1]),
             clone_button(s_map[1])
         ],
@@ -364,5 +398,3 @@ def panel_markup_clone(_, vidid, chat_id, played, dur):
         ]
     ]
     return buttons
-    
-
