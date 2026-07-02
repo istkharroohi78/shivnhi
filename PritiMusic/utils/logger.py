@@ -231,7 +231,7 @@ async def bot_removed_logs(client, message, is_clone=False):
 # ====================================================
 # NEW FUNCTION: Autoplay Logs
 # ====================================================
-async def autoplay_log(client, chat_id, query, is_clone=False, clone_logger_id=None):
+async def autoplay_log(client, chat_id, query, vibe="Unknown", is_clone=False, clone_logger_id=None):
     if not await is_on_off(2):
         return
         
@@ -274,6 +274,7 @@ async def autoplay_log(client, chat_id, query, is_clone=False, clone_logger_id=N
 
 <b>• ᴀᴄᴛɪᴏɴ : ᴀᴜᴛᴏᴘʟᴀʏ ᴛʀɪɢɢᴇʀᴇᴅ 🔄</b>
 <b>• ᴛʀᴀᴄᴋ :</b> {query}
+<b>• ᴠɪʙᴇ :</b> {vibe}
 <b>• ᴄʜᴀᴛ :</b> {chat_title} [<code>{chat_id}</code>]
 """
         owner_reply_markup = InlineKeyboardMarkup(
@@ -305,6 +306,7 @@ async def autoplay_log(client, chat_id, query, is_clone=False, clone_logger_id=N
 
 <b>• ᴀᴄᴛɪᴏɴ : ᴀᴜᴛᴏᴘʟᴀʏ ᴛʀɪɢɢᴇʀᴇᴅ 🔄</b>
 <b>• ᴛʀᴀᴄᴋ : {query}</b>
+<b>• ᴠɪʙᴇ : {vibe}</b>
 <b>• ᴄʜᴀᴛ : {chat_title} [<code>{chat_id}</code>]</b>
 <b>• ᴏᴡɴᴇʀ : {owner}</b>
 <b>• ᴍᴇᴍʙᴇʀs : {members_count}</b></blockquote>
