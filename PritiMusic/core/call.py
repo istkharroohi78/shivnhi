@@ -420,23 +420,36 @@ class Call(PyTgCalls):
                     if last_vidid and last_vidid not in self.autoplay_history[chat_id]:
                         self.autoplay_history[chat_id].append(last_vidid)
                         
-                    if len(self.autoplay_history[chat_id]) > 15:
+                    # History track limit increased to 30 to better track exhausted singers
+                    if len(self.autoplay_history[chat_id]) > 30:
                         self.autoplay_history[chat_id].pop(0)
 
                     try:
                         clean_title = re.sub(r'\[.*?\]|\(.*?\)', '', raw_title).strip()
-                        search_query = f"{clean_title} similar audio tracks"
+                        # Use only the first 3 words to construct a broad but accurate search
+                        short_title = " ".join(clean_title.split()[:3]) 
                         
+                        # 🟢 ATTEMPT 1: Same Language, Same Singer
+                        search_query = f"{short_title} similar songs by same singer same language audio"
                         recommendation = await YouTube.autoplay(last_vidid=last_vidid, title=search_query, max_duration=600) 
                         
-                        # 🟢 SMART LOOP PREVENTION (Language Locked)
+                        # 🟢 ATTEMPT 2: Loop detected? Find another track by the same singer in the same language.
                         if recommendation and recommendation.get("vidid") in self.autoplay_history[chat_id]:
-                            LOGGER(__name__).warning(f"⚠️ Loop Detected! Same song '{recommendation.get('title')}' prevented. Fetching new...")
-                            
-                            short_title = " ".join(clean_title.split()[:3]) 
-                            fallback_query = f"{short_title} other similar songs audio"
-                            
-                            recommendation = await YouTube.autoplay(last_vidid="", title=fallback_query, max_duration=600)
+                            LOGGER(__name__).warning(f"⚠️ Loop Detected! Same song '{recommendation.get('title')}' prevented. Forcing new song by singer...")
+                            fallback_query_1 = f"{short_title} other different songs by same singer same language audio"
+                            recommendation = await YouTube.autoplay(last_vidid="", title=fallback_query_1, max_duration=600)
+
+                        # 🟢 ATTEMPT 3: Singer exhausted? Switch the singer, but strictly KEEP THE SAME LANGUAGE.
+                        if recommendation and recommendation.get("vidid") in self.autoplay_history[chat_id]:
+                            LOGGER(__name__).warning("⚠️ Singer's tracks exhausted. Switching to different singer in SAME LANGUAGE.")
+                            fallback_query_2 = f"{short_title} similar hit songs different singer same language audio"
+                            recommendation = await YouTube.autoplay(last_vidid="", title=fallback_query_2, max_duration=600)
+
+                        # 🟢 ATTEMPT 4: Absolute safety net just in case.
+                        if recommendation and recommendation.get("vidid") in self.autoplay_history[chat_id]:
+                            LOGGER(__name__).warning("⚠️ Extreme loop case. Forcing random hits.")
+                            fallback_query_3 = f"{short_title} best music hits audio"
+                            recommendation = await YouTube.autoplay(last_vidid="", title=fallback_query_3, max_duration=600)
 
                         if recommendation:
                             new_vidid = str(recommendation.get("vidid", ""))
@@ -474,19 +487,16 @@ class Call(PyTgCalls):
                                     # 🟢 FETCH ACTUAL CHAT LINK TO FIX "NOT A MEMBER" ERROR
                                     chat_link = bot_url # Fallback if chat details are inaccessible
                                     try:
-                                        # Using app.get_chat directly to fetch the real link
                                         chat_info = await app.get_chat(chat_id)
                                         if chat_info.username:
                                             chat_link = f"https://t.me/{chat_info.username}"
                                         elif chat_info.invite_link:
                                             chat_link = chat_info.invite_link
                                         else:
-                                            # Optional: A generic private chat link fallback
                                             chat_link = f"https://t.me/c/{str(chat_id).replace('-100', '')}/1"
                                     except Exception:
                                         chat_link = f"https://t.me/c/{str(chat_id).replace('-100', '')}/1"
 
-                                    # Corrected the syntax error in "👥 ɢʀᴏᴜᴘ ʟɪɴᴋ" and kept app.name
                                     reply_markup = InlineKeyboardMarkup([
                                         [
                                             InlineKeyboardButton("👥 ɢʀᴏᴜᴘ ʟɪɴᴋ", url=chat_link),
