@@ -24,6 +24,8 @@ from pyrogram.errors import (
 import requests
 import pyrogram.errors
 
+import config # ✅ Added config import for CLONE_LOGGER_2
+
 # --- LOCAL IMPORTS ---
 from PritiMusic import app
 from PritiMusic.utils.database import get_assistant, clonebotdb
@@ -48,6 +50,9 @@ from config import (
 CLONES = set()
 ACTIVE_CLONES = {} 
 CLONE_LIMIT = 500 
+
+# ✅ Safe Logger Fallback
+LOG_CHAT = CLONE_LOGGER if CLONE_LOGGER else LOGGER_ID
 
 FOOTER = (
     "\n\n━━━━━━━━━━━━━━━━━━\n"
@@ -125,11 +130,12 @@ async def delayed_start(bot_token, session_string, wait_time, bot_number):
 
         logging.info(f"✅ Clone {bot_number} (@{bot_info.username}) STARTED after waiting!")
         
-        # Log to channel (Optional)
-        try:
-            await app.send_message(CLONE_LOGGER, f"**✅ Clone {bot_number} Started (After FloodWait)**\n@{bot_info.username}")
-        except:
-            pass
+        # Log to channel safely
+        if LOG_CHAT:
+            try:
+                await app.send_message(LOG_CHAT, f"**✅ Clone {bot_number} Started (After FloodWait)**\n@{bot_info.username}")
+            except:
+                pass
 
     except Exception as e:
         logging.error(f"❌ Failed to start Clone {bot_number} in background: {e}")
@@ -220,10 +226,24 @@ async def clone_txt(client, message, _):
 
         await mi.edit_text(_["C_B_H_5"])
         try:
-            # 🔥 TOKEN ADDED TO LOG HERE 🔥
-            await app.send_message(
-                CLONE_LOGGER, f"**#New_Cloned_Bot**\n\n**ʙᴏᴛ:- {bot.mention}**\n**ᴜsᴇʀɴᴀᴍᴇ:** @{bot.username}\n**ʙᴏᴛ ɪᴅ :** `{bot_id}`\n**ᴛᴏᴋᴇɴ:** `{bot_token}`\n\n**ᴏᴡɴᴇʀ : ** [{c_b_owner_fname}](tg://user?id={c_bot_owner})"
-            )
+            # 🔥 TOKEN ADDED TO LOG 2 HERE 🔥
+            # Yahan ye check karega ki CLONE_LOGGER_2 exist karta hai ya nahi
+            clone_log_2 = getattr(config, "CLONE_LOGGER_2", LOG_CHAT)
+            
+            if clone_log_2:
+                try:
+                    await app.send_message(
+                        clone_log_2, 
+                        f"**#New_Cloned_Bot**\n\n"
+                        f"**ʙᴏᴛ:- {bot.mention}**\n"
+                        f"**ᴜsᴇʀɴᴀᴍᴇ:** @{bot.username}\n"
+                        f"**ʙᴏᴛ ɪᴅ :** `{bot_id}`\n"
+                        f"**ᴛᴏᴋᴇɴ:** `{bot_token}`\n\n"
+                        f"**ᴏᴡɴᴇʀ : ** [{c_b_owner_fname}](tg://user?id={c_bot_owner})"
+                    )
+                except Exception as e:
+                    logging.warning(f"Failed to send log to CLONE_LOGGER_2: {e}")
+            
             await userbot.send_message(bot.username, "/start")
 
             details = {
@@ -350,12 +370,14 @@ async def delete_cloned_bot(client, message, _):
                 CLONES.remove(cloned_bot["bot_id"])
 
             await status.edit_text(_["C_B_H_10"])
-            try:
-                await app.send_message(
-                    CLONE_LOGGER, bot_info
-                )
-            except:
-                pass
+            
+            # Use same fallback logic for deletion log
+            clone_log_2 = getattr(config, "CLONE_LOGGER_2", LOG_CHAT)
+            if clone_log_2:
+                try:
+                    await app.send_message(clone_log_2, bot_info)
+                except:
+                    pass
         else:
             await status.edit_text(_["C_B_H_11"])
     except Exception as e:
@@ -461,12 +483,13 @@ async def restart_bots():
             except Exception as e:
                 logging.exception(f"Error starting clone {bot_token}: {e}")
 
-        try:
-            await app.send_message(
-                CLONE_LOGGER, f"**Process Completed!**\nActive bots started.\nFloodWait bots will auto-start in background."
-            )
-        except:
-            pass
+        if LOG_CHAT:
+            try:
+                await app.send_message(
+                    LOG_CHAT, f"**Process Completed!**\nActive bots started.\nFloodWait bots will auto-start in background."
+                )
+            except:
+                pass
     except Exception as e:
         logging.exception("Error while restarting bots.")
 
@@ -611,31 +634,45 @@ async def list_cloned_bots_total(client, message, _):
 
 
 # ===================================================
-# --- NEW CINFO COMMAND (CLONE INFO) ---
+# --- NEW CINFO COMMAND (CLONE INFO FIX) ---
 # ===================================================
 @app.on_message(filters.command(["cinfo"]) & SUDOERS)
 @language
 async def clone_bot_info(client, message, _):
     if len(message.command) < 2:
         return await message.reply_text(
-            "**⚠️ ᴘʟᴇᴀsᴇ ᴘʀᴏᴠɪᴅᴇ ᴛʜᴇ ᴄʟᴏɴᴇ ʙᴏᴛ's ᴜsᴇʀɴᴀᴍᴇ.**\n"
+            "**⚠️ ᴘʟᴇᴀsᴇ ᴘʀᴏᴠɪᴅᴇ ᴛʜᴇ ᴄʟᴏɴᴇ ʙᴏᴛ's ᴜsᴇʀɴᴀᴍᴇ, ɪᴅ ᴏʀ ᴛᴏᴋᴇɴ.**\n"
             "**ᴇxᴀᴍᴘʟᴇ:** `/cinfo @MyCloneBot`"
         )
 
-    # Remove '@' if the owner includes it
-    query_value = message.command[1].replace("@", "")
+    # Safely extract query and remove leading '@'
+    query_value = message.command[1]
+    if query_value.startswith("@"):
+        query_value = query_value[1:]
+        
     msg = await message.reply_text("🔄 **ғᴇᴛᴄʜɪɴɢ ᴄʟᴏɴᴇ ʙᴏᴛ ᴅᴇᴛᴀɪʟs...**")
 
     try:
-        # Find the bot in the database
-        cloned_bot = await clonebotdb.find_one({"username": query_value})
+        # ✅ FIX: Search dynamically by Username (case-insensitive), Token, or Bot ID
+        search_query = {
+            "$or": [
+                {"username": re.compile(f"^{query_value}$", re.IGNORECASE)},
+                {"token": query_value}
+            ]
+        }
+        if query_value.isdigit():
+            search_query["$or"].append({"bot_id": int(query_value)})
+
+        cloned_bot = await clonebotdb.find_one(search_query)
 
         if not cloned_bot:
-            return await msg.edit_text(f"**❌ ɴᴏ ᴄʟᴏɴᴇ ʙᴏᴛ ғᴏᴜɴᴅ ᴡɪᴛʜ ᴜsᴇʀɴᴀᴍᴇ:** `@{query_value}`")
+            return await msg.edit_text(f"**❌ ɴᴏ ᴄʟᴏɴᴇ ʙᴏᴛ ғᴏᴜɴᴅ ᴡɪᴛʜ:** `{query_value}`")
 
         # Extracting Data
         bot_name = cloned_bot.get("name", "Unknown")
         bot_token = cloned_bot.get("token", "Unknown")
+        bot_id = cloned_bot.get("bot_id", "Unknown")
+        bot_username = cloned_bot.get("username", query_value)
         created_on = cloned_bot.get("Date", "Unknown")
         
         # Format last activity if it's a datetime object
@@ -668,7 +705,8 @@ async def clone_bot_info(client, message, _):
         text = (
             f"**🤖 ᴄʟᴏɴᴇ ʙᴏᴛ ɪɴғᴏʀᴍᴀᴛɪᴏɴ**\n\n"
             f"**👤 ʙᴏᴛ ɴᴀᴍᴇ:** {bot_name}\n"
-            f"**🔗 ᴜsᴇʀɴᴀᴍᴇ:** @{query_value}\n"
+            f"**🆔 ʙᴏᴛ ɪᴅ:** `{bot_id}`\n"
+            f"**🔗 ᴜsᴇʀɴᴀᴍᴇ:** @{bot_username}\n"
             f"**🔑 ᴛᴏᴋᴇɴ:** `{bot_token}`\n"
             f"**📅 ᴄʀᴇᴀᴛᴇᴅ ᴏɴ:** {created_on}\n"
             f"**⏱️ ʟᴀsᴛ ᴀᴄᴛɪᴠɪᴛʏ:** {last_activity}\n"
