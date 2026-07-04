@@ -2,7 +2,6 @@ import asyncio
 import os
 import random
 import logging
-import re
 from datetime import datetime, timedelta
 from typing import Union
 
@@ -140,7 +139,6 @@ class Call(PyTgCalls):
 
         self.custom_assistants = {} 
         self.active_clients = {} 
-        self.autoplay_history = {} # For Smart Loop Prevention
 
     async def _safe_change_stream(self, client, chat_id, file_path, video=False, extra_args=""):
         if not video:
@@ -406,65 +404,75 @@ class Call(PyTgCalls):
                 from PritiMusic.utils.database.autoplay import is_autoplay_group
                 auto_on = await is_autoplay_group(chat_id)
                 if auto_on and popped:
-                    LOGGER(__name__).info(f"🔄 Autoplay triggered for {chat_id}")
+                    LOGGER(__name__).info(f"🔄 Spotify-Style Autoplay triggered for {chat_id}")
                     raw_title = popped.get("title", "Unknown Title")
+                    title_lower = str(raw_title).lower()
                     last_vidid = str(popped.get("vidid", ""))
 
-                    # 🟢 HISTORY TRACKER FOR LOOP PREVENTION
-                    if not hasattr(self, "autoplay_history"):
-                        self.autoplay_history = {}
-                    
-                    if chat_id not in self.autoplay_history:
-                        self.autoplay_history[chat_id] = []
-                        
-                    if last_vidid and last_vidid not in self.autoplay_history[chat_id]:
-                        self.autoplay_history[chat_id].append(last_vidid)
-                        
-                    # History track limit increased to 30 to better track exhausted singers
-                    if len(self.autoplay_history[chat_id]) > 30:
-                        self.autoplay_history[chat_id].pop(0)
-
                     try:
-                        clean_title = re.sub(r'\[.*?\]|\(.*?\)', '', raw_title).strip()
-                        # Use only the first 3 words to construct a broad but accurate search
-                        short_title = " ".join(clean_title.split()[:3]) 
+                        keywords_map = {
+                            "Hindi": ["arijit singh", "shreya ghoshal", "atif aslam", "neha kakkar", "jubin nautiyal", "darshan raval", "armaan malik", "sonu nigam", "badshah", "sunidhi chauhan", "udit narayan", "kumar sanu", "alka yagnik", "sachet tandon", "parampara", "b praak", "vishal mishra", "shilpa rao", "kk", "mohit chauhan", "ar rahman", "pritam", "mithoon"],
+                            "Punjabi": ["sidhu moose wala", "karan aujla", "diljit dosanjh", "ap dhillon", "amrit maan", "shubh", "kaka", "hardy sandhu", "guru randhawa", "jass manak", "parmish verma", "jaani", "ammy virk", "garry sandhu"],
+                            "Bhojpuri": ["pawan singh", "khesari lal yadav", "shilpi raj", "antra singh", "pramod premi", "ritesh pandey", "arvind akela kallu", "gunjan singh", "samar singh", "neha raj"],
+                            "Haryanvi": ["sapna choudhary", "renuka panwar", "gulzaar chhaniwala", "sumit goswami", "raju punjabi", "amit saini rohtakiya", "pranjal dahiya", "md kd", "masoom sharma"],
+                            "Tamil": ["anirudh", "ar rahman", "yuvan shankar raja", "sid sriram", "harris jayaraj", "ilaiyaraaja"],
+                            "Telugu": ["devi sri prasad", "dsp", "thaman", "sid sriram", "anurag kulkarni", "mangli"],
+                            "English": ["taylor swift", "justin bieber", "ed sheeran", "ariana grande", "the weeknd", "drake", "eminem", "billie eilish", "dua lipa", "post malone"]
+                        }
+
+                        ignore_artist_kws = ["hindi", "punjabi", "bhojpuri", "haryanvi", "tamil", "telugu", "english"]
+
+                        detected_lang = None
+                        detected_artist = None
+                        detected_mood = None
                         
-                        # 🟢 ATTEMPT 1: Same Language, Same Singer
-                        search_query = f"{short_title} similar songs by same singer same language audio"
-                        recommendation = await YouTube.autoplay(last_vidid=last_vidid, title=search_query, max_duration=600) 
+                        moods_list = ["sad", "love", "romantic", "lofi", "chill", "party", "mashup", "emotional", "heartbreak", "dance", "dj"]
+                        for mood in moods_list:
+                            if mood in title_lower:
+                                detected_mood = mood
+                                break
+
+                        for lang, kws in keywords_map.items():
+                            for kw in kws:
+                                if kw in title_lower:
+                                    detected_lang = lang
+                                    if kw not in ignore_artist_kws:
+                                        detected_artist = kw.title()
+                                    break
+                            if detected_lang:
+                                break
+
+                        # 🟢 SPOTIFY RADIO STYLE QUERY BUILDER
+                        # Adding "audio track" avoids 1-hour compilations and forces single songs
+                        query_parts = []
+                        if detected_artist:
+                            query_parts.append(detected_artist)
+                        if detected_lang and not detected_artist:
+                            query_parts.append(detected_lang)
+                            
+                        if query_parts:
+                            if detected_mood:
+                                query_parts.append(detected_mood)
+                            # Key change: searching for "audio track" / "single" like Spotify
+                            query_parts.append("audio track")
+                            search_query = " ".join(query_parts)
+                        else:
+                            # Rely on YouTube's exact algorithm to find the literal "Next Track"
+                            search_query = f"More like {raw_title} audio track"
+
+                        # Use the algorithmic recommendation (last_vidid) as primary, with the smart search as the filter/fallback
+                        recommendation = await YouTube.autoplay(last_vidid=last_vidid, title=search_query, max_duration=600) # Restricted max_dur to 10 mins to avoid jukeboxes
                         
-                        # 🟢 ATTEMPT 2: Loop detected? Find another track by the same singer in the same language.
-                        if recommendation and recommendation.get("vidid") in self.autoplay_history[chat_id]:
-                            LOGGER(__name__).warning(f"⚠️ Loop Detected! Same song '{recommendation.get('title')}' prevented. Forcing new song by singer...")
-                            fallback_query_1 = f"{short_title} other different songs by same singer same language audio"
-                            recommendation = await YouTube.autoplay(last_vidid="", title=fallback_query_1, max_duration=600)
-
-                        # 🟢 ATTEMPT 3: Singer exhausted? Switch the singer, but strictly KEEP THE SAME LANGUAGE.
-                        if recommendation and recommendation.get("vidid") in self.autoplay_history[chat_id]:
-                            LOGGER(__name__).warning("⚠️ Singer's tracks exhausted. Switching to different singer in SAME LANGUAGE.")
-                            fallback_query_2 = f"{short_title} similar hit songs different singer same language audio"
-                            recommendation = await YouTube.autoplay(last_vidid="", title=fallback_query_2, max_duration=600)
-
-                        # 🟢 ATTEMPT 4: Absolute safety net just in case.
-                        if recommendation and recommendation.get("vidid") in self.autoplay_history[chat_id]:
-                            LOGGER(__name__).warning("⚠️ Extreme loop case. Forcing random hits.")
-                            fallback_query_3 = f"{short_title} best music hits audio"
-                            recommendation = await YouTube.autoplay(last_vidid="", title=fallback_query_3, max_duration=600)
-
                         if recommendation:
-                            new_vidid = str(recommendation.get("vidid", ""))
-                            if new_vidid not in self.autoplay_history[chat_id]:
-                                self.autoplay_history[chat_id].append(new_vidid)
-                                
                             db[chat_id].append({
                                 "title": str(recommendation.get("title", "Unknown Title")),
                                 "dur": recommendation.get("duration_min", "0:00"),
                                 "streamtype": popped.get("streamtype", "audio") if popped else "audio",
-                                "by": "Autoplay 🟢",
+                                "by": "Spotify Radio 🟢",
                                 "user_id": 0,
                                 "chat_id": chat_id,
-                                "file": f"vid_{new_vidid}",
-                                "vidid": new_vidid,
+                                "file": f"vid_{recommendation.get('vidid', '')}",
+                                "vidid": str(recommendation.get("vidid", "")),
                                 "seconds": recommendation.get("duration_sec", 0),
                                 "old_dur": recommendation.get("duration_min", "0:00"),
                                 "old_second": 0,
@@ -475,31 +483,25 @@ class Call(PyTgCalls):
                             logger_id = getattr(config, "LOG_GROUP_ID", getattr(config, "LOGGER_ID", None))
                             if logger_id:
                                 try:
+                                    artist_or_lang = " / ".join(filter(None, [detected_artist, detected_lang]))
+                                    if not artist_or_lang:
+                                        artist_or_lang = "Algorithmic Radio"
+                                        
                                     log_text = (
-                                        f"📻 **Autoplay Active**\n\n"
+                                        f"📻 **Spotify-Style Radio Active**\n\n"
                                         f"**Group ID:** `{chat_id}`\n"
                                         f"**Seed Track:** `{raw_title}`\n"
-                                        f"**Now Playing:** `{recommendation.get('title')}`"
+                                        f"**Now Playing:** `{recommendation.get('title')}`\n"
+                                        f"**Artist/Genre Focus:** `{artist_or_lang}`\n"
+                                        f"**Vibe Focus:** `{detected_mood.title() if detected_mood else 'Auto-Match'}`"
                                     )
                                     
                                     bot_url = f"https://t.me/{app.username}" if app.username else "https://t.me/"
-                                    
-                                    # 🟢 FETCH ACTUAL CHAT LINK TO FIX "NOT A MEMBER" ERROR
-                                    chat_link = bot_url # Fallback if chat details are inaccessible
-                                    try:
-                                        chat_info = await app.get_chat(chat_id)
-                                        if chat_info.username:
-                                            chat_link = f"https://t.me/{chat_info.username}"
-                                        elif chat_info.invite_link:
-                                            chat_link = chat_info.invite_link
-                                        else:
-                                            chat_link = f"https://t.me/c/{str(chat_id).replace('-100', '')}/1"
-                                    except Exception:
-                                        chat_link = f"https://t.me/c/{str(chat_id).replace('-100', '')}/1"
+                                    chat_link = f"https://t.me/{chat_username}" if chat_username else (f"https://t.me/c/{str(chat_id)[4:]}/1" if str(chat_id).startswith("-100") else bot_url)
 
                                     reply_markup = InlineKeyboardMarkup([
                                         [
-                                            InlineKeyboardButton("👥 ɢʀᴏᴜᴘ ʟɪɴᴋ", url=chat_link),
+                                            InlineKeyboardButton("👥 Playing Group", url=chat_link),
                                             InlineKeyboardButton(f"🤖 {app.name}", url=bot_url)
                                         ]
                                     ])
