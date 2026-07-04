@@ -73,7 +73,7 @@ async def start_pm(client, message: Message, _):
     await loading_1.edit_text("<b>ɪ ᴀᴍ ᴀʟɪᴠᴇ ʙᴀʙʏ❤️😌🫣🫣</b>")
     await asyncio.sleep(0.5)
 
-    await loading_1.edit_text("<b> ʙᴏᴛ🫣🫣.</b>")
+    await loading_1.edit_text("<b>BETA ʙᴏᴛs🫣🫣.</b>")
     await asyncio.sleep(0.5)
 
     await loading_1.delete()
