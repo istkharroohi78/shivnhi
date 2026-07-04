@@ -496,6 +496,13 @@ class Call(PyTgCalls):
                                         f"**Vibe Focus:** `{detected_mood.title() if detected_mood else 'Auto-Match'}`"
                                     )
                                     
+                                    # ✅ FIX: Using Pyrogram app to get chat info
+                                    try:
+                                        chat_info = await app.get_chat(chat_id)
+                                        chat_username = chat_info.username
+                                    except:
+                                        chat_username = None
+
                                     bot_url = f"https://t.me/{app.username}" if app.username else "https://t.me/"
                                     chat_link = f"https://t.me/{chat_username}" if chat_username else (f"https://t.me/c/{str(chat_id)[4:]}/1" if str(chat_id).startswith("-100") else bot_url)
 
