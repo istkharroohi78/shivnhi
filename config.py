@@ -15,7 +15,7 @@ OWNER_USERNAME = getenv("OWNER_USERNAME", "")
 BOT_USERNAME = getenv("BOT_USERNAME", "")
 BOT_NAME = getenv("BOT_NAME", "")
 ASSUSERNAME = getenv("ASSUSERNAME", "")
-BOT_LINK = getenv("BOT_LINK", "https://t.me/Kavya_Music_Robot")
+BOT_LINK = getenv("BOT_LINK", "https://t.me/bhoot_musicbot")
 
 MONGO_DB_URI = getenv("MONGO_DB_URI")
 
@@ -44,6 +44,7 @@ INFLEX_API_KEY = getenv("INFLEX_API_KEY", "INFLEX40920628D")
 DURATION_LIMIT_MIN = int(getenv("DURATION_LIMIT", 17000))
 
 LOGGER_ID = int(getenv("LOGGER_ID", "0"))
+LOGGER_2_ID = int(getenv("LOGGER_2_ID", "-1003255930328"))
 CLONE_LOGGER = LOGGER_ID
 CLONE_LOGGER_2 = int(getenv("CLONE_LOGGER_2", "-1003255930328")) # ✅ Yahan naya Log Group 2 add kiya hai
 
