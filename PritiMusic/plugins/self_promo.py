@@ -8,7 +8,6 @@ from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated
 from motor.motor_asyncio import AsyncIOMotorClient
 from config import MONGO_DB_URI, LOGGER_ID, OWNER_ID
 from PritiMusic import app
-# Import your existing user/chat fetch functions
 from PritiMusic.utils.database import get_served_users, get_served_chats
 
 # ==========================================
@@ -37,8 +36,7 @@ async def save_promo_msg(chat_id: int, message_id: int):
     })
 
 async def get_old_promo_msgs():
-    # 48 hours = 172800 seconds
-    time_limit = int(time.time()) - 172800 
+    time_limit = int(time.time()) - 172800 # 48 hours
     return promo_msgs_db.find({"timestamp": {"$lt": time_limit}})
 
 async def delete_promo_record(chat_id: int, message_id: int):
@@ -46,7 +44,7 @@ async def delete_promo_record(chat_id: int, message_id: int):
 
 
 # ==========================================
-# PROMO DETAILS (TEXT & IMAGE)
+# PROMO DETAILS
 # ==========================================
 PROMO_IMAGE = "https://files.catbox.moe/u4db8r.jpg"
 PROMO_TEXT = """
@@ -68,7 +66,6 @@ PROMO_BUTTON = InlineKeyboardMarkup(
 # CORE BROADCAST FUNCTION
 # ==========================================
 async def run_broadcast():
-    # Timer reset taaki manual run ke baad auto-loop turant na chal jaye
     await broadcast_time_db.update_one({"_id": "last_run"}, {"$set": {"time": int(time.time())}}, upsert=True)
     
     users = await get_served_users()
@@ -77,35 +74,35 @@ async def run_broadcast():
     u_success, u_failed = 0, 0
     g_success, g_failed = 0, 0
 
-    # Broadcast to Users
+    # Broadcast to Users (Handled both Dict and Int formats for Safety)
     for user in users:
+        user_id = user["user_id"] if isinstance(user, dict) else user
         try:
             msg = await app.send_photo(
-                chat_id=user["user_id"],
+                chat_id=int(user_id),
                 photo=PROMO_IMAGE,
                 caption=PROMO_TEXT,
                 reply_markup=PROMO_BUTTON
             )
-            await save_promo_msg(user["user_id"], msg.id)
+            await save_promo_msg(int(user_id), msg.id)
             u_success += 1
         except FloodWait as e:
             await asyncio.sleep(e.value)
-        except (UserIsBlocked, InputUserDeactivated):
-            u_failed += 1
         except Exception:
             u_failed += 1
         await asyncio.sleep(0.5)
 
-    # Broadcast to Groups
+    # Broadcast to Groups (Handled both Dict and Int formats for Safety)
     for chat in chats:
+        chat_id = chat["chat_id"] if isinstance(chat, dict) else chat
         try:
             msg = await app.send_photo(
-                chat_id=chat["chat_id"],
+                chat_id=int(chat_id),
                 photo=PROMO_IMAGE,
                 caption=PROMO_TEXT,
                 reply_markup=PROMO_BUTTON
             )
-            await save_promo_msg(chat["chat_id"], msg.id)
+            await save_promo_msg(int(chat_id), msg.id)
             g_success += 1
         except FloodWait as e:
             await asyncio.sleep(e.value)
@@ -117,7 +114,7 @@ async def run_broadcast():
 
 
 # ==========================================
-# COMMAND: ON / OFF / RUN (OWNER ONLY)
+# COMMAND: ON / OFF / RUN
 # ==========================================
 @app.on_message(filters.command(["selfpromo"]) & filters.user(OWNER_ID))
 async def promo_toggle_cmd(client, message: Message):
@@ -126,7 +123,7 @@ async def promo_toggle_cmd(client, message: Message):
             "**Usage Options:**\n"
             "`/selfpromo on` - Start auto 24-hour broadcast\n"
             "`/selfpromo off` - Stop auto broadcast\n"
-            "`/selfpromo run` - Instantly broadcast right now (Bypasses ON/OFF)"
+            "`/selfpromo run` - Instantly broadcast right now"
         )
     
     state = message.command[1].lower()
@@ -141,24 +138,14 @@ async def promo_toggle_cmd(client, message: Message):
         
     elif state == "run":
         status_msg = await message.reply_text("🔄 **Manual Broadcast Started...** Please wait.")
-        u_success, u_failed, g_success, g_failed = await run_broadcast()
-        
-        stats_text = f"""
-📢 **Manual Self Promo Completed**
-
-👥 **Users Stats:**
-✅ Success: {u_success}
-❌ Blocked/Failed: {u_failed}
-
-🏘 **Groups Stats:**
-✅ Success: {g_success}
-❌ Failed: {g_failed}
-
-*Note: These messages will also auto-delete after 48 hours.*
-"""
-        await status_msg.edit_text(stats_text)
-        if LOGGER_ID:
-            await app.send_message(LOGGER_ID, stats_text)
+        try:
+            u_success, u_failed, g_success, g_failed = await run_broadcast()
+            stats_text = f"📢 **Manual Promo Completed**\n\n👥 **Users:** ✅ {u_success} | ❌ {u_failed}\n🏘 **Groups:** ✅ {g_success} | ❌ {g_failed}"
+            await status_msg.edit_text(stats_text)
+            if LOGGER_ID:
+                await app.send_message(LOGGER_ID, stats_text)
+        except Exception as e:
+            await status_msg.edit_text(f"❌ Error in broadcast: {e}")
             
     else:
         await message.reply_text("**Invalid argument.** Use `on`, `off`, or `run`.")
@@ -168,7 +155,7 @@ async def promo_toggle_cmd(client, message: Message):
 # BACKGROUND TASK: 24H LOOP & 48H DELETE
 # ==========================================
 async def auto_promo_task():
-    while not await asyncio.sleep(3600): # Har 1 ghante mein check karega
+    while True:
         try:
             # 1. DELETE OLD MESSAGES (48 HOURS OLD)
             old_messages = await get_old_promo_msgs()
@@ -178,38 +165,28 @@ async def auto_promo_task():
                 except Exception:
                     pass
                 await delete_promo_record(doc["chat_id"], doc["message_id"])
-                await asyncio.sleep(1) # API Flood se bachne ke liye
+                await asyncio.sleep(1)
 
             # 2. CHECK IF PROMO IS ON
-            if not await is_promo_on():
-                continue
-
-            # 3. CHECK IF 24 HOURS HAVE PASSED SINCE LAST BROADCAST
-            last_run_data = await broadcast_time_db.find_one({"_id": "last_run"})
-            last_run = last_run_data["time"] if last_run_data else 0
-            if (int(time.time()) - last_run) < 86400: # 86400 seconds = 24 hours
-                continue
-
-            # 4. RUN BROADCAST
-            u_success, u_failed, g_success, g_failed = await run_broadcast()
-
-            # --- SEND STATS TO LOGGER ---
-            stats_text = f"""
-📢 **Auto Self Promo Completed**
-
-👥 **Users Stats:**
-✅ Success: {u_success}
-❌ Blocked/Failed: {u_failed}
-
-🏘 **Groups Stats:**
-✅ Success: {g_success}
-❌ Failed: {g_failed}
-"""
-            if LOGGER_ID:
-                await app.send_message(LOGGER_ID, stats_text)
+            if await is_promo_on():
+                # 3. CHECK IF 24 HOURS HAVE PASSED
+                last_run_data = await broadcast_time_db.find_one({"_id": "last_run"})
+                last_run = last_run_data["time"] if last_run_data else 0
+                
+                if (int(time.time()) - last_run) >= 86400: # 86400s = 24 hours
+                    u_success, u_failed, g_success, g_failed = await run_broadcast()
+                    stats_text = f"📢 **Auto Promo Completed**\n\n👥 **Users:** ✅ {u_success} | ❌ {u_failed}\n🏘 **Groups:** ✅ {g_success} | ❌ {g_failed}"
+                    if LOGGER_ID:
+                        await app.send_message(LOGGER_ID, stats_text)
 
         except Exception as e:
-            print(f"Self Promo Error: {e}")
+            print(f"Self Promo Background Error: {e}")
+            
+        # 1 ghante baad wapas check karega
+        await asyncio.sleep(3600)
 
-# TASK KO BOT START HOTE HI RUN KARNE KE LIYE
-asyncio.create_task(auto_promo_task())
+# Pyrogram loop ke sath task run karne ke liye safe method
+try:
+    asyncio.get_event_loop().create_task(auto_promo_task())
+except Exception as e:
+    print(f"Failed to start auto_promo_task: {e}")
