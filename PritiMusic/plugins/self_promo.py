@@ -6,7 +6,7 @@ from pyrogram.enums import ButtonStyle
 from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated
 
 from motor.motor_asyncio import AsyncIOMotorClient
-from config import MONGO_DB_URI, LOGGER_ID, OWNER_ID
+from config import MONGO_DB_URI, LOGGER_ID, SUDOERS, OWNER_ID
 from PritiMusic import app
 from PritiMusic.utils.database import get_served_users, get_served_chats
 
@@ -74,7 +74,7 @@ async def run_broadcast():
     u_success, u_failed = 0, 0
     g_success, g_failed = 0, 0
 
-    # Broadcast to Users (Handled both Dict and Int formats for Safety)
+    # Broadcast to Users
     for user in users:
         user_id = user["user_id"] if isinstance(user, dict) else user
         try:
@@ -92,7 +92,7 @@ async def run_broadcast():
             u_failed += 1
         await asyncio.sleep(0.5)
 
-    # Broadcast to Groups (Handled both Dict and Int formats for Safety)
+    # Broadcast to Groups
     for chat in chats:
         chat_id = chat["chat_id"] if isinstance(chat, dict) else chat
         try:
@@ -116,8 +116,21 @@ async def run_broadcast():
 # ==========================================
 # COMMAND: ON / OFF / RUN
 # ==========================================
-@app.on_message(filters.command(["selfpromo"]) & filters.user(OWNER_ID))
+# 🟢 FIX: Filter hata diya gaya hai taaki debug message aa sake
+@app.on_message(filters.command(["selfpromo", "promo"], prefixes=["/", "!", "."]))
 async def promo_toggle_cmd(client, message: Message):
+    user_id = message.from_user.id
+    
+    # Check kar rahe hain ki command dene wala Owner ya Sudoer hai ya nahi
+    sudo_list = [int(x) for x in SUDOERS] if isinstance(SUDOERS, list) else []
+    owner_id_int = int(OWNER_ID) if OWNER_ID else 0
+    
+    if user_id not in sudo_list and user_id != owner_id_int:
+        return await message.reply_text(
+            f"❌ **Access Denied!**\n"
+            f"Mujhe laga aap owner ho, par aapki User ID `{user_id}` config.py ke `SUDOERS` ya `OWNER_ID` mein nahi hai."
+        )
+
     if len(message.command) != 2:
         return await message.reply_text(
             "**Usage Options:**\n"
@@ -148,7 +161,7 @@ async def promo_toggle_cmd(client, message: Message):
             await status_msg.edit_text(f"❌ Error in broadcast: {e}")
             
     else:
-        await message.reply_text("**Invalid argument.** Use `on`, `off`, or `run`.")
+        await message.reply_text("**Invalid argument.** Use `/selfpromo on`, `off`, or `run`.")
 
 
 # ==========================================
@@ -180,13 +193,13 @@ async def auto_promo_task():
                         await app.send_message(LOGGER_ID, stats_text)
 
         except Exception as e:
-            print(f"Self Promo Background Error: {e}")
+            pass # Background task errors ignored for smooth running
             
         # 1 ghante baad wapas check karega
         await asyncio.sleep(3600)
 
-# Pyrogram loop ke sath task run karne ke liye safe method
+# Task Start Hook
 try:
     asyncio.get_event_loop().create_task(auto_promo_task())
-except Exception as e:
-    print(f"Failed to start auto_promo_task: {e}")
+except:
+    pass
