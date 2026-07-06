@@ -1,11 +1,12 @@
-from pyrogram import enums
+from pyrogram import Client, filters, enums
 from pyrogram.enums import ParseMode, ButtonStyle
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ChatMemberUpdated
 import random
 
+# Make sure config se LOGGER_2_ID import ho raha hai
 from PritiMusic import app
 from PritiMusic.utils.database import is_on_off
-from config import LOGGER_ID
+from config import LOGGER_ID, LOGGER_2_ID
 
 # 🔥 PREMIUM EMOJIS LIST 🔥
 PREMIUM_EMOJIS = [
@@ -28,6 +29,9 @@ async def get_owner(client, chat_id):
     return "Unknown"
 
 
+# ====================================================
+# PLAY LOGS
+# ====================================================
 async def play_logs(message, streamtype):
     if await is_on_off(2):
         try:
@@ -35,7 +39,6 @@ async def play_logs(message, streamtype):
         except:
             query = "Link/File or Reply"
 
-        # Fetch Total Members & Owner
         try:
             members_count = await app.get_chat_members_count(message.chat.id)
         except:
@@ -43,7 +46,6 @@ async def play_logs(message, streamtype):
             
         owner = await get_owner(app, message.chat.id)
 
-        # Generate Link for Button
         chat_link = None
         if message.chat.username:
             chat_link = f"https://t.me/{message.chat.username}"
@@ -62,7 +64,6 @@ async def play_logs(message, streamtype):
 <b>• ᴏᴡɴᴇʀ : {owner}</b>
 <b>• ᴍᴇᴍʙᴇʀs : {members_count}</b></blockquote>
 """
-        # Create Button Markup
         buttons = []
         if chat_link:
             buttons.append([InlineKeyboardButton("ɢʀᴏᴜᴘ ʟɪɴᴋ", url=chat_link, style=ButtonStyle.PRIMARY, icon_custom_emoji_id=random.choice(PREMIUM_EMOJIS))])
@@ -84,17 +85,16 @@ async def play_logs(message, streamtype):
         return
 
 
+# ====================================================
+# CLONE BOT PLAY LOGS
+# ====================================================
 async def clone_bot_logs(client, message, bot_mention, clone_logger_id, streamtype):
-    # 1. Data Extract kar lete hain
     bot = await client.get_me()
     try:
         query = message.text.split(None, 1)[1]
     except:
         query = "Link/File or Reply"
 
-    # ====================================================
-    # CASE 1: Clone Bot Owner ke Logger me bhejna
-    # ====================================================
     if clone_logger_id:
         owner_log_text = f"""
 <b><a href="https://t.me/{bot.username}">{bot.first_name}</a> ᴘʟᴀʏ ʟᴏɢ</b>
@@ -119,9 +119,6 @@ async def clone_bot_logs(client, message, bot_mention, clone_logger_id, streamty
             except Exception as e:
                 print(f"[ERROR] Sending to Clone Owner Log Failed: {e}")
 
-    # ====================================================
-    # CASE 2: Aapke (Main Admin) Logger me bhejna
-    # ====================================================
     if LOGGER_ID:
         try:
             members_count = await client.get_chat_members_count(message.chat.id)
@@ -168,68 +165,103 @@ async def clone_bot_logs(client, message, bot_mention, clone_logger_id, streamty
 
 
 # ====================================================
-# NEW FUNCTION: Bot Removed (Kicked/Left) Logs
+# AUTO GROUP ADD/REMOVE EVENT LOGGER
 # ====================================================
-async def bot_removed_logs(client, message, is_clone=False):
+@app.on_chat_member_updated(filters.group, group=1)
+async def auto_group_logger(client: Client, message: ChatMemberUpdated):
     try:
         bot = await client.get_me()
         
-        if message.from_user:
-            kicked_by = message.from_user.mention
-        else:
-            kicked_by = "<b>Unknown User</b>"
+        # Sirf tabhi trigger hoga jab bot khud add/remove ho
+        if not message.new_chat_member or message.new_chat_member.user.id != bot.id:
+            return
+
+        # Main Bot vs Clone Bot Check
+        is_clone = False if bot.id == app.id else True
+        target_logger = LOGGER_2_ID if is_clone else LOGGER_ID
+        
+        if not target_logger:
+            return
+
+        chat = message.chat
+        action_by = message.from_user
         
         try:
-            members_count = await client.get_chat_members_count(message.chat.id)
+            members_count = await client.get_chat_members_count(chat.id)
         except:
             members_count = "Unknown"
-            
-        owner = await get_owner(client, message.chat.id)
 
+        owner = await get_owner(client, chat.id)
+        action_by_mention = action_by.mention if action_by else "<b>Unknown User</b>"
+        bot_details = f"@{bot.username} (Clone)" if is_clone else app.mention
+        
+        # Image URL
+        log_image = "https://files.catbox.moe/10zwqs.jpg"
+
+        # Group Link Fetching Logic for Button
         chat_link = None
-        if message.chat.username:
-            chat_link = f"https://t.me/{message.chat.username}"
+        if chat.username:
+            chat_link = f"https://t.me/{chat.username}"
+        elif message.new_chat_member.status == enums.ChatMemberStatus.ADMINISTRATOR:
+            try:
+                chat_link = await client.export_chat_invite_link(chat.id)
+            except:
+                pass
 
-        if is_clone:
-            header_text = "⚠️ ᴄʟᴏɴᴇ ʙᴏᴛ ʀᴇᴍᴏᴠᴇᴅ"
-            bot_details = f"@{bot.username}"
-        else:
-            header_text = "⚠️ ᴍᴀɪɴ ʙᴏᴛ ʀᴇᴍᴏᴠᴇᴅ"
-            bot_details = app.mention
+        # Button Setup
+        reply_markup = None
+        if chat_link:
+            buttons = [
+                [InlineKeyboardButton("🔗 ɢʀᴏᴜᴘ ʟɪɴᴋ", url=chat_link)]
+            ]
+            reply_markup = InlineKeyboardMarkup(buttons)
 
-        remove_log_text = f"""
-<blockquote><b>{header_text}</b>
+        # 🟢 CONDITION 1: Added to Group
+        if message.new_chat_member.status in [enums.ChatMemberStatus.MEMBER, enums.ChatMemberStatus.ADMINISTRATOR]:
+            log_caption = f"""
+#Added
+<blockquote><b>✅ ʙᴏᴛ ᴀᴅᴅᴇᴅ ᴛᴏ ɢʀᴏᴜᴘ</b>
 
 <b>• ʙᴏᴛ : {bot_details}</b>
-<b>• ʀᴇᴍᴏᴠᴇᴅ ʙʏ : {kicked_by}</b>
-<b>• ᴄʜᴀᴛ : {message.chat.title} [<code>{message.chat.id}</code>]</b>
+<b>• ᴀᴅᴅᴇᴅ ʙʏ : {action_by_mention}</b>
+<b>• ᴄʜᴀᴛ : {chat.title} [<code>{chat.id}</code>]</b>
 <b>• ᴏᴡɴᴇʀ : {owner}</b>
 <b>• ᴍᴇᴍʙᴇʀs : {members_count}</b></blockquote>
 """
-        buttons = []
-        if chat_link:
-            buttons.append([InlineKeyboardButton("ɢʀᴏᴜᴘ ʟɪɴᴋ", url=chat_link, style=ButtonStyle.DANGER, icon_custom_emoji_id=random.choice(PREMIUM_EMOJIS))])
-        buttons.append([InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ", url="https://t.me/betabot_support")])
-        
-        reply_markup = InlineKeyboardMarkup(buttons)
+            await client.send_photo(
+                chat_id=target_logger,
+                photo=log_image,
+                caption=log_caption,
+                parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup
+            )
 
-        if LOGGER_ID:
-            try:
-                await app.send_message(
-                    chat_id=LOGGER_ID,
-                    text=remove_log_text,
-                    parse_mode=ParseMode.HTML,
-                    disable_web_page_preview=True,
-                    reply_markup=reply_markup
-                )
-            except Exception as e:
-                print(f"[ERROR] Sending Remove Log Failed: {e}")
+        # 🔴 CONDITION 2: Removed from Group
+        elif message.new_chat_member.status in [enums.ChatMemberStatus.BANNED, enums.ChatMemberStatus.LEFT]:
+            log_caption = f"""
+#Removed
+<blockquote><b>❌ ʙᴏᴛ ʀᴇᴍᴏᴠᴇᴅ ꜰʀᴏᴍ ɢʀᴏᴜᴘ</b>
+
+<b>• ʙᴏᴛ : {bot_details}</b>
+<b>• ʀᴇᴍᴏᴠᴇᴅ ʙʏ : {action_by_mention}</b>
+<b>• ᴄʜᴀᴛ : {chat.title} [<code>{chat.id}</code>]</b>
+<b>• ᴏᴡɴᴇʀ : {owner}</b>
+<b>• ᴍᴇᴍʙᴇʀs : {members_count}</b></blockquote>
+"""
+            await client.send_photo(
+                chat_id=target_logger,
+                photo=log_image,
+                caption=log_caption,
+                parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup
+            )
+
     except Exception as e:
-        print(f"[ERROR] Bot Removed Log Generation Failed: {e}")
+        print(f"[ERROR] Auto Group Logger Failed: {e}")
 
 
 # ====================================================
-# NEW FUNCTION: Autoplay Logs
+# AUTOPLAY LOGS 
 # ====================================================
 async def autoplay_log(client, chat_id, query, vibe="Unknown", is_clone=False, clone_logger_id=None):
     if not await is_on_off(2):
@@ -265,9 +297,6 @@ async def autoplay_log(client, chat_id, query, vibe="Unknown", is_clone=False, c
         except:
             pass
 
-    # ====================================================
-    # CASE 1: Clone Bot Owner ke Logger me bhejna
-    # ====================================================
     if is_clone and clone_logger_id:
         owner_autoplay_text = f"""
 <b><a href="https://t.me/{bot.username}">{bot.first_name}</a> ᴀᴜᴛᴏᴘʟᴀʏ ʟᴏɢ</b>
@@ -293,9 +322,6 @@ async def autoplay_log(client, chat_id, query, vibe="Unknown", is_clone=False, c
             except Exception as e:
                 print(f"[ERROR] Sending to Clone Owner Autoplay Log Failed: {e}")
 
-    # ====================================================
-    # CASE 2: Aapke (Main Admin) Logger me bhejna
-    # ====================================================
     if is_clone:
         header_text = f"🤖 <b>ᴄʟᴏɴᴇ ᴀᴜᴛᴏᴘʟᴀʏ ʟᴏɢ : @{bot.username}</b>"
     else:
