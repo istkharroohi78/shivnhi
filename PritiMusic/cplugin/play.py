@@ -71,6 +71,13 @@ from PritiMusic.cplugin.utils.cthumbnail import get_thumb
 
 from config import BANNED_USERS, lyrical
 
+# =======================================================
+# 🎨 PREMIUM TEXT STYLES (BETA HUB)
+# =======================================================
+MSG_DOWNLOADING = "➛ 𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐅𝐫𝐨𝐦 𝐁𝐞𝐭𝐚 𝐇𝐮𝐛 𝐁𝐚𝐛𝐲 𝐩𝐥𝐞𝐚𝐬𝐞 𝐰𝐚𝐢𝐭😁...."
+MSG_STARTING = "➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲❤️...."
+
+
 user_last_message_time = {}
 user_command_count = {}
 SPAM_THRESHOLD = 2
@@ -295,9 +302,9 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
         elif stype == "photo" and scontent:
             mystic = await message.reply_photo(scontent)
         else:
-            mystic = await message.reply_text(_["play_2"].format(channel) if channel else _["play_1"])
+            mystic = await message.reply_text(MSG_DOWNLOADING)
     except:
-        mystic = await message.reply_text(_["play_2"].format(channel) if channel else _["play_1"])
+        mystic = await message.reply_text(MSG_DOWNLOADING)
 
     plist_id = None
     slider = None
@@ -324,6 +331,13 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
             if is_nsfw_content(details.get("title", "")):
                 await send_security_log(message, "ɴsғᴡ ᴠɪᴏʟᴀᴛɪᴏɴ (Telegram Audio)", details.get("title", ""))
                 return await mystic.edit_text("**🚫 sᴇᴄᴜʀɪᴛʏ ᴀʟᴇʀᴛ: ᴀᴅᴜʟᴛ ᴄᴏɴᴛᴇɴᴛ ɪs sᴛʀɪᴄᴛʟʏ ᴘʀᴏʜɪʙɪᴛᴇᴅ!**")
+
+            # 🌟 NEW: Starting Stream Message
+            try:
+                if getattr(mystic, "text", None):
+                    await mystic.edit_text(MSG_STARTING)
+                    await asyncio.sleep(0.5)
+            except: pass
 
             try:
                 await stream(client, _, mystic, user_id, details, chat_id, user_name, message.chat.id, streamtype="telegram", forceplay=fplay, userbot=userbot)
@@ -358,6 +372,13 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
             if is_nsfw_content(details.get("title", "")):
                 await send_security_log(message, "ɴsғᴡ ᴠɪᴏʟᴀᴛɪᴏɴ (Telegram Video)", details.get("title", ""))
                 return await mystic.edit_text("**🚫 sᴇᴄᴜʀɪᴛʏ ᴀʟᴇʀᴛ: ᴀᴅᴜʟᴛ ᴄᴏɴᴛᴇɴᴛ ɪs sᴛʀɪᴄᴛʟʏ ᴘʀᴏʜɪʙɪᴛᴇᴅ!**")
+
+            # 🌟 NEW: Starting Stream Message
+            try:
+                if getattr(mystic, "text", None):
+                    await mystic.edit_text(MSG_STARTING)
+                    await asyncio.sleep(0.5)
+            except: pass
 
             try:
                 await stream(client, _, mystic, user_id, details, chat_id, user_name, message.chat.id, video=True, streamtype="telegram", forceplay=fplay, userbot=userbot)
@@ -484,6 +505,14 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
                 duration_sec = details["duration_sec"]
                 if duration_sec > config.DURATION_LIMIT:
                     return await mystic.edit_text(_["play_6"].format(config.DURATION_LIMIT_MIN, cuser.mention))
+                
+                # 🌟 NEW: Starting Stream Message
+                try:
+                    if getattr(mystic, "text", None):
+                        await mystic.edit_text(MSG_STARTING)
+                        await asyncio.sleep(0.5)
+                except: pass
+
                 await stream(client, _, mystic, user_id, details, chat_id, user_name, message.chat.id, streamtype="soundcloud", forceplay=fplay, userbot=userbot)
                 return await mystic.delete()
             except:
@@ -523,7 +552,14 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
             except Exception as e:
                 try:
                     await Lucky.stream_call(url)
-                    await mystic.edit_text(_["str_2"])
+                    
+                    # 🌟 NEW: Starting Stream Message
+                    try:
+                        if getattr(mystic, "text", None):
+                            await mystic.edit_text(MSG_STARTING)
+                            await asyncio.sleep(0.5)
+                    except: pass
+
                     await stream(client, _, mystic, message.from_user.id, url, chat_id, message.from_user.first_name, message.chat.id, video=video, streamtype="index", forceplay=fplay, userbot=userbot)
                     if C_LOG_STATUS:
                          try:
@@ -588,6 +624,14 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
             else:
                 buttons = livestream_markup(_, track_id, user_id, "v" if video else "a", "c" if channel else "g", "f" if fplay else "d")
                 return await mystic.edit_text(_["play_13"], reply_markup=InlineKeyboardMarkup(buttons))
+        
+        # 🌟 NEW: Starting Stream Message
+        try:
+            if getattr(mystic, "text", None):
+                await mystic.edit_text(MSG_STARTING)
+                await asyncio.sleep(0.5)
+        except: pass
+
         try:
             await stream(client, _, mystic, user_id, details, chat_id, user_name, message.chat.id, video=video, streamtype=streamtype, spotify=spotify, forceplay=fplay, userbot=userbot)
         except Exception as e:
@@ -611,6 +655,14 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
             ran_hash = uuid.uuid4().hex[:10].upper()
             lyrical[ran_hash] = plist_id
             buttons = playlist_markup(_, ran_hash, message.from_user.id, plist_type, "c" if channel else "g", "f" if fplay else "d")
+            
+            # 🌟 NEW: Starting Stream Message
+            try:
+                if getattr(mystic, "text", None):
+                    await mystic.edit_text(MSG_STARTING)
+                    await asyncio.sleep(0.5)
+            except: pass
+            
             await mystic.delete()
             await message.reply_photo(photo=img, caption=cap, reply_markup=InlineKeyboardMarkup(buttons), has_spoiler=True)
             if C_LOG_STATUS:
@@ -621,6 +673,14 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
         else:
             if slider:
                 buttons = slider_markup(_, track_id, message.from_user.id, query, 0, "c" if channel else "g", "f" if fplay else "d")
+                
+                # 🌟 NEW: Starting Stream Message
+                try:
+                    if getattr(mystic, "text", None):
+                        await mystic.edit_text(MSG_STARTING)
+                        await asyncio.sleep(0.5)
+                except: pass
+                
                 await mystic.delete()
                 await message.reply_photo(photo=details["thumb"], caption=_["play_10"].format(details["title"].title(), details["duration_min"]), reply_markup=InlineKeyboardMarkup(buttons), has_spoiler=True)
                 if C_LOG_STATUS:
@@ -630,6 +690,14 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
                 return await play_logs(message, streamtype=f"Searched on Youtube")
             else:
                 buttons = track_markup(_, track_id, message.from_user.id, "c" if channel else "g", "f" if fplay else "d")
+                
+                # 🌟 NEW: Starting Stream Message
+                try:
+                    if getattr(mystic, "text", None):
+                        await mystic.edit_text(MSG_STARTING)
+                        await asyncio.sleep(0.5)
+                except: pass
+                
                 await mystic.delete()
                 await message.reply_photo(photo=img, caption=cap, reply_markup=InlineKeyboardMarkup(buttons), has_spoiler=True)
                 if C_LOG_STATUS:
@@ -700,7 +768,7 @@ async def play_music(client: Client, CallbackQuery, _):
     except:
         pass
     
-    mystic = await CallbackQuery.message.reply_text("🔄 ᴘʀᴏᴄᴇssɪɴɢ...")
+    mystic = await CallbackQuery.message.reply_text(MSG_DOWNLOADING)
     
     try:
         details, track_id = await YouTube.track(vidid, True)
@@ -719,6 +787,13 @@ async def play_music(client: Client, CallbackQuery, _):
         return await mystic.edit_text(_["play_13"], reply_markup=InlineKeyboardMarkup(buttons))
     video = True if mode == "v" else None
     ffplay = True if fplay == "f" else None
+    
+    # 🌟 NEW: Starting Stream Message
+    try:
+        await mystic.edit_text(MSG_STARTING)
+        await asyncio.sleep(0.5)
+    except: pass
+
     try:
         await stream(client, _, mystic, CallbackQuery.from_user.id, details, chat_id, user_name, CallbackQuery.message.chat.id, video, streamtype="youtube", forceplay=ffplay, userbot=userbot)
     except Exception as e:
@@ -799,7 +874,7 @@ async def play_playlists_command(client: Client, CallbackQuery, _):
     except:
         pass
     
-    mystic = await CallbackQuery.message.reply_text("🔄 ᴘʀᴏᴄᴇssɪɴɢ ᴘʟᴀʏʟɪsᴛ...")
+    mystic = await CallbackQuery.message.reply_text(MSG_DOWNLOADING)
 
     videoid = lyrical.get(videoid)
     video = True if mode == "v" else None
@@ -831,6 +906,13 @@ async def play_playlists_command(client: Client, CallbackQuery, _):
             result, apple_id = await Apple.playlist(videoid, True)
         except:
             return await mystic.edit_text("❌ ᴇʀʀᴏʀ ғᴇᴛᴄʜɪɴɢ ᴀᴘᴘʟᴇ ᴘʟᴀʏʟɪsᴛ.")
+            
+    # 🌟 NEW: Starting Stream Message
+    try:
+        await mystic.edit_text(MSG_STARTING)
+        await asyncio.sleep(0.5)
+    except: pass
+
     try:
         await stream(client, _, mystic, user_id, result, chat_id, user_name, CallbackQuery.message.chat.id, video, streamtype="playlist", spotify=spotify, forceplay=ffplay, userbot=userbot)
     except Exception as e:
