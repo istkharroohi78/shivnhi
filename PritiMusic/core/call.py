@@ -22,7 +22,6 @@ from pytgcalls.types import AudioQuality, ChatUpdate, MediaStream, StreamEnded, 
 
 import config
 from strings import get_string
-# from PritiMusic.utils.logger import autoplay_log # If you don't have this, comment it out
 from PritiMusic import LOGGER, YouTube, app
 from PritiMusic.misc import db
 from PritiMusic.utils.database import (
@@ -42,7 +41,6 @@ from PritiMusic.utils.formatters import check_duration, seconds_to_min, speed_co
 
 from PritiMusic.utils.inline.play import stream_markup
 from PritiMusic.utils.stream.autoclear import auto_clean
-# from PritiMusic.utils.stream.cards import schedule_stream_card # Use app.send_photo instead if missing
 from PritiMusic.utils.thumbnails import get_thumb
 
 autoend = {}
@@ -103,7 +101,6 @@ async def _clear_(chat_id: int) -> None:
 
 class Call:
     def __init__(self):
-        # 🟢 SAFE CONFIG CHECK (Fix for AttributeError: 'config' has no attribute 'STRING3')
         str1 = getattr(config, "STRING1", None)
         self.userbot1 = Client(
             "LuckyAss1", api_id=getattr(config, "API_ID", None), api_hash=getattr(config, "API_HASH", None), session_string=str(str1)
@@ -353,7 +350,7 @@ class Call:
         except Exception: pass
         finally: self.active_calls.discard(chat_id)
 
-    async def force_stop_stream(self, chat_id: int) -> None:
+    async def stop_stream_force(self, chat_id: int) -> None:
         assistant = await group_assistant(self, chat_id)
         await self.stop_vc_join_notifier(chat_id)
         try:
@@ -367,6 +364,9 @@ class Call:
         try: await assistant.leave_call(chat_id)
         except Exception: pass
         finally: self.active_calls.discard(chat_id)
+
+    async def force_stop_stream(self, chat_id: int) -> None:
+        await self.stop_stream_force(chat_id)
 
     async def skip_stream(self, chat_id: int, link: str, video: Union[bool, str] = None, image: Union[bool, str] = None) -> None:
         if not link:
@@ -477,6 +477,129 @@ class Call:
                     autoend[chat_id] = datetime.now() + timedelta(minutes=1)
             except: pass
 
+    # 🟢 FULL SPOTIFY-STYLE AUTOPLAY LOGIC INTEGRATED HERE
+    async def _enqueue_autoplay_track(self, chat_id: int, popped: dict) -> bool:
+        try:
+            from PritiMusic.utils.database.autoplay import is_autoplay_group
+            auto_on = await is_autoplay_group(chat_id)
+            if auto_on and popped:
+                LOGGER(__name__).info(f"🔄 Spotify-Style Autoplay triggered for {chat_id}")
+                raw_title = popped.get("title", "Unknown Title")
+                title_lower = str(raw_title).lower()
+                last_vidid = str(popped.get("vidid", ""))
+
+                keywords_map = {
+                    "Hindi": ["arijit singh", "shreya ghoshal", "atif aslam", "neha kakkar", "jubin nautiyal", "darshan raval", "armaan malik", "sonu nigam", "badshah", "sunidhi chauhan", "udit narayan", "kumar sanu", "alka yagnik", "sachet tandon", "parampara", "b praak", "vishal mishra", "shilpa rao", "kk", "mohit chauhan", "ar rahman", "pritam", "mithoon"],
+                    "Punjabi": ["sidhu moose wala", "karan aujla", "diljit dosanjh", "ap dhillon", "amrit maan", "shubh", "kaka", "hardy sandhu", "guru randhawa", "jass manak", "parmish verma", "jaani", "ammy virk", "garry sandhu"],
+                    "Bhojpuri": ["pawan singh", "khesari lal yadav", "shilpi raj", "antra singh", "pramod premi", "ritesh pandey", "arvind akela kallu", "gunjan singh", "samar singh", "neha raj"],
+                    "Haryanvi": ["sapna choudhary", "renuka panwar", "gulzaar chhaniwala", "sumit goswami", "raju punjabi", "amit saini rohtakiya", "pranjal dahiya", "md kd", "masoom sharma"],
+                    "Tamil": ["anirudh", "ar rahman", "yuvan shankar raja", "sid sriram", "harris jayaraj", "ilaiyaraaja"],
+                    "Telugu": ["devi sri prasad", "dsp", "thaman", "sid sriram", "anurag kulkarni", "mangli"],
+                    "English": ["taylor swift", "justin bieber", "ed sheeran", "ariana grande", "the weeknd", "drake", "eminem", "billie eilish", "dua lipa", "post malone"]
+                }
+
+                ignore_artist_kws = ["hindi", "punjabi", "bhojpuri", "haryanvi", "tamil", "telugu", "english"]
+
+                detected_lang = None
+                detected_artist = None
+                detected_mood = None
+                
+                moods_list = ["sad", "love", "romantic", "lofi", "chill", "party", "mashup", "emotional", "heartbreak", "dance", "dj"]
+                for mood in moods_list:
+                    if mood in title_lower:
+                        detected_mood = mood
+                        break
+
+                for lang, kws in keywords_map.items():
+                    for kw in kws:
+                        if kw in title_lower:
+                            detected_lang = lang
+                            if kw not in ignore_artist_kws:
+                                detected_artist = kw.title()
+                            break
+                    if detected_lang:
+                        break
+
+                query_parts = []
+                if detected_artist:
+                    query_parts.append(detected_artist)
+                if detected_lang and not detected_artist:
+                    query_parts.append(detected_lang)
+                    
+                if query_parts:
+                    if detected_mood:
+                        query_parts.append(detected_mood)
+                    query_parts.append("audio track")
+                    search_query = " ".join(query_parts)
+                else:
+                    search_query = f"More like {raw_title} audio track"
+
+                recommendation = await YouTube.autoplay(last_vidid=last_vidid, title=search_query, max_duration=600)
+                
+                if recommendation:
+                    db[chat_id].append({
+                        "title": str(recommendation.get("title", "Unknown Title")),
+                        "dur": recommendation.get("duration_min", "0:00"),
+                        "streamtype": popped.get("streamtype", "audio") if popped else "audio",
+                        "by": "Spotify Radio 🟢",
+                        "user_id": 0,
+                        "chat_id": chat_id,
+                        "file": f"vid_{recommendation.get('vidid', '')}",
+                        "vidid": str(recommendation.get("vidid", "")),
+                        "seconds": recommendation.get("duration_sec", 0),
+                        "old_dur": recommendation.get("duration_min", "0:00"),
+                        "old_second": 0,
+                        "played": 0,
+                        "client": popped.get("client", app)
+                    })
+                    
+                    logger_id = getattr(config, "LOG_GROUP_ID", getattr(config, "LOGGER_ID", None))
+                    if logger_id:
+                        try:
+                            artist_or_lang = " / ".join(filter(None, [detected_artist, detected_lang]))
+                            if not artist_or_lang:
+                                artist_or_lang = "Algorithmic Radio"
+                                
+                            log_text = (
+                                f"📻 **Spotify-Style Radio Active**\n\n"
+                                f"**Group ID:** `{chat_id}`\n"
+                                f"**Seed Track:** `{raw_title}`\n"
+                                f"**Now Playing:** `{recommendation.get('title')}`\n"
+                                f"**Artist/Genre Focus:** `{artist_or_lang}`\n"
+                                f"**Vibe Focus:** `{detected_mood.title() if detected_mood else 'Auto-Match'}`"
+                            )
+                            
+                            try:
+                                chat_info = await app.get_chat(chat_id)
+                                chat_username = chat_info.username
+                            except:
+                                chat_username = None
+
+                            bot_url = f"https://t.me/{app.username}" if app.username else "https://t.me/"
+                            chat_link = f"https://t.me/{chat_username}" if chat_username else (f"https://t.me/c/{str(chat_id)[4:]}/1" if str(chat_id).startswith("-100") else bot_url)
+
+                            reply_markup = InlineKeyboardMarkup([
+                                [
+                                    InlineKeyboardButton("👥 Playing Group", url=chat_link),
+                                    InlineKeyboardButton(f"🤖 {app.name}", url=bot_url)
+                                ]
+                            ])
+
+                            await app.send_message(
+                                int(logger_id), 
+                                log_text,
+                                reply_markup=reply_markup,
+                                disable_web_page_preview=True
+                            )
+                        except Exception as e:
+                            LOGGER(__name__).warning(f"Failed to send Autoplay Log to GC: {e}")
+                    return True
+                else:
+                    LOGGER(__name__).warning(f"⚠️ YouTube Autoplay returned empty choices for chat: {chat_id}.")
+        except Exception as e:
+            LOGGER(__name__).error(f"❌ Critical Autoplay exception: {e}")
+        return False
+
     async def play(self, client, chat_id: int) -> None:
         check = db.get(chat_id)
         popped = None
@@ -489,12 +612,15 @@ class Call:
                 await set_loop(chat_id, loop)
             await auto_clean(popped)
             if not check:
-                await _clear_(chat_id)
-                if chat_id in self.active_calls:
-                    try: await client.leave_call(chat_id)
-                    except: pass
-                    finally: self.active_calls.discard(chat_id)
-                return
+                if await self._enqueue_autoplay_track(chat_id, popped):
+                    check = db.get(chat_id)
+                if not check:
+                    await _clear_(chat_id)
+                    if chat_id in self.active_calls:
+                        try: await client.leave_call(chat_id)
+                        except: pass
+                        finally: self.active_calls.discard(chat_id)
+                    return
         except:
             try:
                 await _clear_(chat_id)
@@ -679,8 +805,9 @@ class Call:
             try:
                 if isinstance(update, UpdateGroupCallParticipants):
                     await self._handle_group_call_participants_update(update)
-            except Exception as e:
-                LOGGER(__name__).error(f"VC Notify Error: {e}")
+            except Exception:
+                # 🟢 FIXED: Removed VC Notify Error logger as requested
+                pass
 
         for assistant in assistants:
             assistant.on_update()(unified_update_handler)
