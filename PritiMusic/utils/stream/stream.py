@@ -1,6 +1,7 @@
 import os
 import random
 import asyncio
+import logging
 from typing import Union
 
 from pyrogram.types import InlineKeyboardMarkup
@@ -16,18 +17,38 @@ from PritiMusic.utils.stream.queue import put_queue, put_queue_index
 from PritiMusic.utils.pastebin import LuckyBin
 from PritiMusic.utils.thumbnails import get_thumb 
 
+LOGGER = logging.getLogger(__name__)
+
 def get_random_img(img_list):
     if img_list:
         if isinstance(img_list, list):
             return random.choice(img_list)
         return img_list
-    return "https://telegra.ph/file/2e3d368e77c449c287430.jpg"
+    return "https://files.catbox.moe/6r97s4.jpg"
 
 # ⚡ SPEED OPTIMIZATION: Background Delete Task
 async def safe_delete(message):
     if not message: return
     try: await message.delete()
     except: pass
+
+# 🛡️ BULLETPROOF CARD SENDER: Photo fail hone par Text send karega
+async def safe_send_card(chat_id, photo_url, caption, reply_markup):
+    try:
+        if not photo_url:
+            photo_url = get_random_img(config.PLAYLIST_IMG_URL)
+        elif isinstance(photo_url, list):
+            photo_url = random.choice(photo_url)
+            
+        return await app.send_photo(chat_id, photo=photo_url, caption=caption, reply_markup=reply_markup)
+    except Exception as e:
+        LOGGER.error(f"Image Send Failed: {e}. Falling back to text message.")
+        try:
+            # Agar photo fail hui toh sirf text aur buttons bhej do
+            return await app.send_message(chat_id, text=caption, reply_markup=reply_markup, disable_web_page_preview=True)
+        except Exception as ex:
+            LOGGER.error(f"Text send also failed: {ex}")
+            return None
 
 async def stream(
     _, mystic, user_id, result, chat_id, user_name, original_chat_id,
@@ -58,7 +79,6 @@ async def stream(
                 file_path, direct = await YouTube.download(vidid, mystic, video=status, videoid=True)
                 if not file_path or str(file_path) == "None": raise AssistantErr(_["play_14"])
                 
-                # ⚡ Run Delete in Background to boost speed
                 asyncio.create_task(safe_delete(mystic))
                 
                 await Lucky.join_call(chat_id, original_chat_id, file_path, video=status, image=thumbnail)
@@ -66,14 +86,18 @@ async def stream(
                 
                 img = await get_thumb(vidid, user_id, app)
                 if not img: img = get_random_img(config.PLAYLIST_IMG_URL)
-                run = await app.send_photo(original_chat_id, photo=img, caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{vidid}", title[:23], duration_min, user_name), reply_markup=InlineKeyboardMarkup(stream_markup(_, chat_id)), has_spoiler=False)
                 
-                if db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
+                caption_text = _["stream_1"].format(f"https://t.me/{app.username}?start=info_{vidid}", title[:23], duration_min, user_name)
+                markup = InlineKeyboardMarkup(stream_markup(_, chat_id))
+                
+                run = await safe_send_card(original_chat_id, img, caption_text, markup)
+                if run and db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
                     db[chat_id][0]["mystic"] = run
                     db[chat_id][0]["markup"] = "stream"
+                    
         if count == 0: return
         else:
-            asyncio.create_task(safe_delete(mystic)) # Backup Delete
+            asyncio.create_task(safe_delete(mystic))
             link = await LuckyBin(msg)
             carbon = await Carbon.generate(msg, random.randint(100, 10000000))
             return await app.send_photo(original_chat_id, photo=carbon, caption=_["play_21"].format(position, link), reply_markup=close_markup(_), has_spoiler=False)
@@ -84,7 +108,6 @@ async def stream(
         file_path, direct = await YouTube.download(vidid, mystic, videoid=True, video=status)
         if not file_path or str(file_path) == "None": raise AssistantErr(_["play_14"])
         
-        # ⚡ Run Delete in Background to boost speed
         asyncio.create_task(safe_delete(mystic))
         
         if await is_active_chat(chat_id):
@@ -98,9 +121,12 @@ async def stream(
             
             img = await get_thumb(vidid, user_id, app)
             if not img: img = get_random_img(config.PLAYLIST_IMG_URL)
-            run = await app.send_photo(original_chat_id, photo=img, caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{vidid}", title[:23], duration_min, user_name), reply_markup=InlineKeyboardMarkup(stream_markup(_, chat_id)), has_spoiler=False)
             
-            if db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
+            caption_text = _["stream_1"].format(f"https://t.me/{app.username}?start=info_{vidid}", title[:23], duration_min, user_name)
+            markup = InlineKeyboardMarkup(stream_markup(_, chat_id))
+            
+            run = await safe_send_card(original_chat_id, img, caption_text, markup)
+            if run and db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
                 db[chat_id][0]["mystic"] = run
                 db[chat_id][0]["markup"] = "stream"
 
@@ -108,7 +134,6 @@ async def stream(
         link, vidid, title, thumbnail = result["link"], result["vidid"], (result["title"]).title(), result["thumb"]
         status = True if video else None
         
-        # ⚡ Run Delete in Background to boost speed
         asyncio.create_task(safe_delete(mystic))
         
         if await is_active_chat(chat_id):
@@ -124,16 +149,18 @@ async def stream(
             
             img = await get_thumb(vidid, user_id, app)
             if not img: img = get_random_img(config.PLAYLIST_IMG_URL)
-            run = await app.send_photo(original_chat_id, photo=img, caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{vidid}", title[:23], "Live", user_name), reply_markup=InlineKeyboardMarkup(stream_markup(_, chat_id)), has_spoiler=False)
             
-            if db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
+            caption_text = _["stream_1"].format(f"https://t.me/{app.username}?start=info_{vidid}", title[:23], "Live", user_name)
+            markup = InlineKeyboardMarkup(stream_markup(_, chat_id))
+            
+            run = await safe_send_card(original_chat_id, img, caption_text, markup)
+            if run and db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
                 db[chat_id][0]["mystic"] = run
                 db[chat_id][0]["markup"] = "tg"
 
     elif streamtype == "soundcloud":
         file_path, title, duration_min = result["filepath"], result["title"], result["duration_min"]
         
-        # ⚡ Run Delete in Background
         asyncio.create_task(safe_delete(mystic))
         
         if await is_active_chat(chat_id):
@@ -145,8 +172,11 @@ async def stream(
             await Lucky.join_call(chat_id, original_chat_id, file_path, video=None)
             await put_queue(chat_id, original_chat_id, file_path, title, duration_min, user_name, streamtype, user_id, "audio", forceplay=forceplay)
             
-            run = await app.send_photo(original_chat_id, photo=config.SOUNCLOUD_IMG_URL, caption=_["stream_1"].format(config.SUPPORT_CHAT, title[:23], duration_min, user_name), reply_markup=InlineKeyboardMarkup(stream_markup(_, chat_id)))
-            if db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
+            caption_text = _["stream_1"].format(config.SUPPORT_CHAT, title[:23], duration_min, user_name)
+            markup = InlineKeyboardMarkup(stream_markup(_, chat_id))
+            
+            run = await safe_send_card(original_chat_id, config.SOUNCLOUD_IMG_URL, caption_text, markup)
+            if run and db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
                 db[chat_id][0]["mystic"] = run
                 db[chat_id][0]["markup"] = "tg"
 
@@ -154,7 +184,6 @@ async def stream(
         file_path, link, title, duration_min = result["path"], result["link"], (result["title"]).title(), result["dur"]
         status = True if video else None
         
-        # ⚡ Run Delete in Background
         asyncio.create_task(safe_delete(mystic))
         
         if await is_active_chat(chat_id):
@@ -168,25 +197,32 @@ async def stream(
             if video: await add_active_video_chat(chat_id)
             
             tg_img = config.TELEGRAM_VIDEO_URL if video else config.TELEGRAM_AUDIO_URL
-            run = await app.send_photo(original_chat_id, photo=tg_img, caption=_["stream_1"].format(link, title[:23], duration_min, user_name), reply_markup=InlineKeyboardMarkup(stream_markup(_, chat_id)))
-            if db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
+            caption_text = _["stream_1"].format(link, title[:23], duration_min, user_name)
+            markup = InlineKeyboardMarkup(stream_markup(_, chat_id))
+            
+            run = await safe_send_card(original_chat_id, tg_img, caption_text, markup)
+            if run and db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
                 db[chat_id][0]["mystic"] = run
                 db[chat_id][0]["markup"] = "tg"
 
     elif streamtype == "index":
         link, title, duration_min = result, "Index or M3u8 Link", "00:00"
         
-        # ⚡ Run Delete in Background
         asyncio.create_task(safe_delete(mystic))
         
         if await is_active_chat(chat_id):
             await put_queue_index(chat_id, original_chat_id, "index_url", title, duration_min, user_name, link, "video" if video else "audio")
+            position = len(db.get(chat_id)) - 1
+            await app.send_message(chat_id=original_chat_id, text=_["queue_4"].format(position, title[:27], duration_min, user_name), reply_markup=InlineKeyboardMarkup(aq_markup(_, chat_id)))
         else:
             if not forceplay: db[chat_id] = []
             await Lucky.join_call(chat_id, original_chat_id, link, video=True if video else None)
             await put_queue_index(chat_id, original_chat_id, "index_url", title, duration_min, user_name, link, "video" if video else "audio", forceplay=forceplay)
             
-            run = await app.send_photo(original_chat_id, photo=config.STREAM_IMG_URL, caption=_["stream_2"].format(user_name), reply_markup=InlineKeyboardMarkup(stream_markup(_, chat_id)))
-            if db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
+            caption_text = _["stream_2"].format(user_name)
+            markup = InlineKeyboardMarkup(stream_markup(_, chat_id))
+            
+            run = await safe_send_card(original_chat_id, config.STREAM_IMG_URL, caption_text, markup)
+            if run and db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
                 db[chat_id][0]["mystic"] = run
                 db[chat_id][0]["markup"] = "tg"
