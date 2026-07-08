@@ -140,6 +140,7 @@ class Call(PyTgCalls):
         self.custom_assistants = {} 
         self.active_clients = {} 
 
+    # 🟢 FIXED: Multi-Level Fallback for Smooth Changing of Stream
     async def _safe_change_stream(self, client, chat_id, file_path, video=False, extra_args=""):
         if not video:
             stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH, ffmpeg_parameters=extra_args)
@@ -147,6 +148,7 @@ class Call(PyTgCalls):
             return
 
         try: 
+            # Step 1: Try High Quality (720p)
             stream = MediaStream(
                 file_path, 
                 audio_parameters=AudioQuality.HIGH, 
@@ -155,21 +157,35 @@ class Call(PyTgCalls):
             )
             await client.play(chat_id, stream)
         except Exception as e:
-            LOGGER(__name__).warning(f"720p Change Stream failed, auto-switching to 480p: {e}")
-            stream = MediaStream(
-                file_path, 
-                audio_parameters=AudioQuality.HIGH, 
-                video_parameters=VideoQuality.SD_480p, 
-                ffmpeg_parameters=extra_args
-            )
-            await client.play(chat_id, stream)
+            LOGGER(__name__).warning(f"⚠️ 720p Stream failed in {chat_id}, switching to 480p: {e}")
+            try:
+                # Step 2: Try Medium Quality (480p)
+                stream = MediaStream(
+                    file_path, 
+                    audio_parameters=AudioQuality.HIGH, 
+                    video_parameters=VideoQuality.SD_480p, 
+                    ffmpeg_parameters=extra_args
+                )
+                await client.play(chat_id, stream)
+            except Exception as e2:
+                LOGGER(__name__).warning(f"⚠️ 480p Stream failed in {chat_id}, forcing 360p (Low Quality): {e2}")
+                # Step 3: Extreme Fallback (360p) so the bot never crashes
+                stream = MediaStream(
+                    file_path, 
+                    audio_parameters=AudioQuality.MEDIUM, 
+                    video_parameters=VideoQuality.SD_360p, 
+                    ffmpeg_parameters=extra_args
+                )
+                await client.play(chat_id, stream)
 
+    # 🟢 FIXED: Multi-Level Fallback for Fresh VC Join
     async def _safe_join_call(self, assistant_to_join, chat_id, file_path, video=False):
         if not video:
             stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH)
             return await assistant_to_join.play(chat_id, stream)
 
         try: 
+            # Step 1: Try High Quality (720p)
             stream = MediaStream(
                 file_path, 
                 audio_parameters=AudioQuality.HIGH, 
@@ -177,13 +193,24 @@ class Call(PyTgCalls):
             )
             await assistant_to_join.play(chat_id, stream)
         except Exception as e:
-            LOGGER(__name__).warning(f"720p Join Call failed, auto-switching to 480p: {e}")
-            stream = MediaStream(
-                file_path, 
-                audio_parameters=AudioQuality.HIGH, 
-                video_parameters=VideoQuality.SD_480p
-            )
-            await assistant_to_join.play(chat_id, stream)
+            LOGGER(__name__).warning(f"⚠️ 720p Join Call failed in {chat_id}, auto-switching to 480p: {e}")
+            try:
+                # Step 2: Try Medium Quality (480p)
+                stream = MediaStream(
+                    file_path, 
+                    audio_parameters=AudioQuality.HIGH, 
+                    video_parameters=VideoQuality.SD_480p
+                )
+                await assistant_to_join.play(chat_id, stream)
+            except Exception as e2:
+                LOGGER(__name__).error(f"⚠️ 480p also failed in {chat_id}, forcing 360p (Low Quality): {e2}")
+                # Step 3: Extreme Fallback (360p)
+                stream = MediaStream(
+                    file_path, 
+                    audio_parameters=AudioQuality.MEDIUM, 
+                    video_parameters=VideoQuality.SD_360p
+                )
+                await assistant_to_join.play(chat_id, stream)
 
     async def get_active_clients(self, chat_id):
         clients = []
@@ -442,8 +469,6 @@ class Call(PyTgCalls):
                             if detected_lang:
                                 break
 
-                        # 🟢 SPOTIFY RADIO STYLE QUERY BUILDER
-                        # Adding "audio track" avoids 1-hour compilations and forces single songs
                         query_parts = []
                         if detected_artist:
                             query_parts.append(detected_artist)
@@ -453,15 +478,12 @@ class Call(PyTgCalls):
                         if query_parts:
                             if detected_mood:
                                 query_parts.append(detected_mood)
-                            # Key change: searching for "audio track" / "single" like Spotify
                             query_parts.append("audio track")
                             search_query = " ".join(query_parts)
                         else:
-                            # Rely on YouTube's exact algorithm to find the literal "Next Track"
                             search_query = f"More like {raw_title} audio track"
 
-                        # Use the algorithmic recommendation (last_vidid) as primary, with the smart search as the filter/fallback
-                        recommendation = await YouTube.autoplay(last_vidid=last_vidid, title=search_query, max_duration=600) # Restricted max_dur to 10 mins to avoid jukeboxes
+                        recommendation = await YouTube.autoplay(last_vidid=last_vidid, title=search_query, max_duration=600)
                         
                         if recommendation:
                             db[chat_id].append({
@@ -496,7 +518,6 @@ class Call(PyTgCalls):
                                         f"**Vibe Focus:** `{detected_mood.title() if detected_mood else 'Auto-Match'}`"
                                     )
                                     
-                                    # ✅ FIX: Using Pyrogram app to get chat info
                                     try:
                                         chat_info = await app.get_chat(chat_id)
                                         chat_username = chat_info.username
