@@ -81,18 +81,19 @@ async def _clear_(chat_id):
     await remove_active_video_chat(chat_id)
     await remove_active_chat(chat_id)
 
-# 🟢 DYNAMIC MEDIA STREAM LOGIC (FIXED NONETYPE ERROR)
+# 🟢 FIXED: DYNAMIC MEDIA STREAM LOGIC (Audio/Video Separation)
 def dynamic_media_stream(path: str, video: bool = False, ffmpeg_params: str = None) -> MediaStream:
     if not path:
         raise TypeError("Argument 'path' cannot be None or empty.")
     
-    base_ffmpeg = "-preset ultrafast -tune fastdecode -threads 1 -x264opts no-scenecut"
-    if ffmpeg_params:
-        final_ffmpeg = f"{base_ffmpeg} {ffmpeg_params}".strip()
+    # 🟢 Audio ke liye sirf -threads 1 (CPU bachane ke liye), video parameters nahi chahiye
+    if video:
+        base_ffmpeg = "-preset ultrafast -tune fastdecode -threads 1 -x264opts no-scenecut"
     else:
-        final_ffmpeg = base_ffmpeg
+        base_ffmpeg = "-threads 1"
 
-    # 🟢 FIXED: Audio ke liye video_parameters pass nahi karna hai
+    final_ffmpeg = f"{base_ffmpeg} {ffmpeg_params}".strip() if ffmpeg_params else base_ffmpeg
+
     if video:
         return MediaStream(
             media_path=path,
@@ -110,7 +111,6 @@ def dynamic_media_stream(path: str, video: bool = False, ffmpeg_params: str = No
 
 class Call(PyTgCalls):
     def __init__(self):
-        # Assistant 1
         self.userbot1 = Client(
             name="LuckyAss1",
             api_id=config.API_ID,
@@ -119,7 +119,6 @@ class Call(PyTgCalls):
         )
         self.one = PyTgCalls(self.userbot1, cache_duration=100)
 
-        # Assistant 2
         self.two = None
         if getattr(config, "STRING2", None):
             self.userbot2 = Client(
@@ -130,7 +129,6 @@ class Call(PyTgCalls):
             )
             self.two = PyTgCalls(self.userbot2, cache_duration=100)
 
-        # Assistant 3
         self.three = None
         if getattr(config, "STRING3", None):
             self.userbot3 = Client(
@@ -141,7 +139,6 @@ class Call(PyTgCalls):
             )
             self.three = PyTgCalls(self.userbot3, cache_duration=100)
 
-        # Assistant 4
         self.four = None
         if getattr(config, "STRING4", None):
             self.userbot4 = Client(
@@ -152,7 +149,6 @@ class Call(PyTgCalls):
             )
             self.four = PyTgCalls(self.userbot4, cache_duration=100)
 
-        # Assistant 5
         self.five = None
         if getattr(config, "STRING5", None):
             self.userbot5 = Client(
