@@ -140,77 +140,69 @@ class Call(PyTgCalls):
         self.custom_assistants = {} 
         self.active_clients = {} 
 
-    # 🟢 FIXED: 3-Tier Quality Fallback without blocking CPU parameters
+    # 🟢 FIXED: HEROKU LOW-RAM OPTIMIZATION (Strict 360p/240p limit)
     async def _safe_change_stream(self, client, chat_id, file_path, video=False, extra_args=""):
+        # Heroku 512MB RAM limit ke liye strictly -threads 1 aur fastdecode lagana zaroori hai
+        base_ffmpeg = "-preset ultrafast -tune fastdecode -threads 1"
+        final_args = f"{base_ffmpeg} {extra_args}".strip()
+
         if not video:
-            stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH, ffmpeg_parameters=extra_args)
+            stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH, ffmpeg_parameters=final_args)
             await client.play(chat_id, stream)
             return
 
         try: 
-            # Step 1: 720p High Quality
+            # Step 1: Start with 360p direct for Heroku (no 720p/480p to prevent immediate crash)
             stream = MediaStream(
                 file_path, 
-                audio_parameters=AudioQuality.HIGH, 
-                video_parameters=VideoQuality.HD_720p, 
-                ffmpeg_parameters=extra_args
+                audio_parameters=AudioQuality.MEDIUM, 
+                video_parameters=VideoQuality.SD_360p, 
+                ffmpeg_parameters=final_args
             )
             await client.play(chat_id, stream)
         except Exception as e:
-            LOGGER(__name__).warning(f"⚠️ 720p Stream failed in {chat_id}, switching to 480p: {e}")
+            LOGGER(__name__).warning(f"⚠️ 360p Stream failed in {chat_id}, forcing 240p (Lowest Quality): {e}")
             try:
-                # Step 2: 480p Medium Quality
+                # Step 2: Extreme Heroku Fallback (240p)
                 stream = MediaStream(
                     file_path, 
-                    audio_parameters=AudioQuality.HIGH, 
-                    video_parameters=VideoQuality.SD_480p, 
-                    ffmpeg_parameters=extra_args
+                    audio_parameters=AudioQuality.LOW, 
+                    video_parameters=VideoQuality.SD_240p, 
+                    ffmpeg_parameters=final_args
                 )
                 await client.play(chat_id, stream)
             except Exception as e2:
-                LOGGER(__name__).warning(f"⚠️ 480p Stream failed in {chat_id}, forcing 360p (Low Quality): {e2}")
-                # Step 3: 360p Low Quality for stability
-                stream = MediaStream(
-                    file_path, 
-                    audio_parameters=AudioQuality.MEDIUM, 
-                    video_parameters=VideoQuality.SD_360p, 
-                    ffmpeg_parameters=extra_args
-                )
-                await client.play(chat_id, stream)
+                LOGGER(__name__).error(f"❌ All qualities failed. Heroku RAM maxed out: {e2}")
 
-    # 🟢 FIXED: Safe Join Call with 3-Tier Fallback
+    # 🟢 FIXED: HEROKU SAFE JOIN CALL
     async def _safe_join_call(self, assistant_to_join, chat_id, file_path, video=False):
+        ffmpeg_flags = "-preset ultrafast -tune fastdecode -threads 1"
+
         if not video:
-            stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH)
+            stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH, ffmpeg_parameters=ffmpeg_flags)
             return await assistant_to_join.play(chat_id, stream)
 
         try: 
-            # Step 1: 720p High Quality
+            # Heroku ke liye strictly 360p
             stream = MediaStream(
                 file_path, 
-                audio_parameters=AudioQuality.HIGH, 
-                video_parameters=VideoQuality.HD_720p
+                audio_parameters=AudioQuality.MEDIUM, 
+                video_parameters=VideoQuality.SD_360p,
+                ffmpeg_parameters=ffmpeg_flags
             )
             await assistant_to_join.play(chat_id, stream)
         except Exception as e:
-            LOGGER(__name__).warning(f"⚠️ 720p Join Call failed in {chat_id}, auto-switching to 480p: {e}")
+            LOGGER(__name__).warning(f"⚠️ 360p Join Call failed in {chat_id}, auto-switching to 240p: {e}")
             try:
-                # Step 2: 480p Medium Quality
                 stream = MediaStream(
                     file_path, 
-                    audio_parameters=AudioQuality.HIGH, 
-                    video_parameters=VideoQuality.SD_480p
+                    audio_parameters=AudioQuality.LOW, 
+                    video_parameters=VideoQuality.SD_240p,
+                    ffmpeg_parameters=ffmpeg_flags
                 )
                 await assistant_to_join.play(chat_id, stream)
             except Exception as e2:
-                LOGGER(__name__).error(f"⚠️ 480p also failed in {chat_id}, forcing 360p (Low Quality): {e2}")
-                # Step 3: 360p Low Quality
-                stream = MediaStream(
-                    file_path, 
-                    audio_parameters=AudioQuality.MEDIUM, 
-                    video_parameters=VideoQuality.SD_360p
-                )
-                await assistant_to_join.play(chat_id, stream)
+                LOGGER(__name__).error(f"❌ PyTgCalls Failed on Heroku: {e2}")
 
     async def get_active_clients(self, chat_id):
         clients = []
