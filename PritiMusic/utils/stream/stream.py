@@ -12,7 +12,7 @@ from PritiMusic.misc import db
 from PritiMusic.utils.database import add_active_video_chat, is_active_chat
 from PritiMusic.utils.exceptions import AssistantErr
 from PritiMusic.utils.inline import aq_markup, close_markup, stream_markup
-from PritiMusic.utils.stream.queue import put_queue
+from PritiMusic.utils.stream.queue import put_queue, put_queue_index
 from PritiMusic.utils.pastebin import LuckyBin
 from PritiMusic.utils.thumbnails import get_thumb 
 
@@ -35,7 +35,7 @@ async def stream(
     spotify: Union[bool, str] = None, forceplay: Union[bool, str] = None,
 ):
     if not result: return
-    if forceplay: await Lucky.stop_stream(chat_id)
+    if forceplay: await Lucky.force_stop_stream(chat_id)
 
     if streamtype == "playlist":
         msg = f"{_['play_19']}\n\n"
@@ -126,6 +126,67 @@ async def stream(
             if not img: img = get_random_img(config.PLAYLIST_IMG_URL)
             run = await app.send_photo(original_chat_id, photo=img, caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{vidid}", title[:23], "Live", user_name), reply_markup=InlineKeyboardMarkup(stream_markup(_, chat_id)), has_spoiler=False)
             
+            if db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
+                db[chat_id][0]["mystic"] = run
+                db[chat_id][0]["markup"] = "tg"
+
+    elif streamtype == "soundcloud":
+        file_path, title, duration_min = result["filepath"], result["title"], result["duration_min"]
+        
+        # ⚡ Run Delete in Background
+        asyncio.create_task(safe_delete(mystic))
+        
+        if await is_active_chat(chat_id):
+            await put_queue(chat_id, original_chat_id, file_path, title, duration_min, user_name, streamtype, user_id, "audio")
+            position = len(db.get(chat_id)) - 1
+            await app.send_message(chat_id=original_chat_id, text=_["queue_4"].format(position, title[:27], duration_min, user_name), reply_markup=InlineKeyboardMarkup(aq_markup(_, chat_id)))
+        else:
+            if not forceplay: db[chat_id] = []
+            await Lucky.join_call(chat_id, original_chat_id, file_path, video=None)
+            await put_queue(chat_id, original_chat_id, file_path, title, duration_min, user_name, streamtype, user_id, "audio", forceplay=forceplay)
+            
+            run = await app.send_photo(original_chat_id, photo=config.SOUNCLOUD_IMG_URL, caption=_["stream_1"].format(config.SUPPORT_CHAT, title[:23], duration_min, user_name), reply_markup=InlineKeyboardMarkup(stream_markup(_, chat_id)))
+            if db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
+                db[chat_id][0]["mystic"] = run
+                db[chat_id][0]["markup"] = "tg"
+
+    elif streamtype == "telegram":
+        file_path, link, title, duration_min = result["path"], result["link"], (result["title"]).title(), result["dur"]
+        status = True if video else None
+        
+        # ⚡ Run Delete in Background
+        asyncio.create_task(safe_delete(mystic))
+        
+        if await is_active_chat(chat_id):
+            await put_queue(chat_id, original_chat_id, file_path, title, duration_min, user_name, streamtype, user_id, "video" if video else "audio")
+            position = len(db.get(chat_id)) - 1
+            await app.send_message(chat_id=original_chat_id, text=_["queue_4"].format(position, title[:27], duration_min, user_name), reply_markup=InlineKeyboardMarkup(aq_markup(_, chat_id)))
+        else:
+            if not forceplay: db[chat_id] = []
+            await Lucky.join_call(chat_id, original_chat_id, file_path, video=status)
+            await put_queue(chat_id, original_chat_id, file_path, title, duration_min, user_name, streamtype, user_id, "video" if video else "audio", forceplay=forceplay)
+            if video: await add_active_video_chat(chat_id)
+            
+            tg_img = config.TELEGRAM_VIDEO_URL if video else config.TELEGRAM_AUDIO_URL
+            run = await app.send_photo(original_chat_id, photo=tg_img, caption=_["stream_1"].format(link, title[:23], duration_min, user_name), reply_markup=InlineKeyboardMarkup(stream_markup(_, chat_id)))
+            if db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
+                db[chat_id][0]["mystic"] = run
+                db[chat_id][0]["markup"] = "tg"
+
+    elif streamtype == "index":
+        link, title, duration_min = result, "Index or M3u8 Link", "00:00"
+        
+        # ⚡ Run Delete in Background
+        asyncio.create_task(safe_delete(mystic))
+        
+        if await is_active_chat(chat_id):
+            await put_queue_index(chat_id, original_chat_id, "index_url", title, duration_min, user_name, link, "video" if video else "audio")
+        else:
+            if not forceplay: db[chat_id] = []
+            await Lucky.join_call(chat_id, original_chat_id, link, video=True if video else None)
+            await put_queue_index(chat_id, original_chat_id, "index_url", title, duration_min, user_name, link, "video" if video else "audio", forceplay=forceplay)
+            
+            run = await app.send_photo(original_chat_id, photo=config.STREAM_IMG_URL, caption=_["stream_2"].format(user_name), reply_markup=InlineKeyboardMarkup(stream_markup(_, chat_id)))
             if db.get(chat_id) and isinstance(db[chat_id], list) and len(db[chat_id]) > 0:
                 db[chat_id][0]["mystic"] = run
                 db[chat_id][0]["markup"] = "tg"
