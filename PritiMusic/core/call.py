@@ -215,19 +215,9 @@ class Call:
             user_ids.add(int(user_id))
         return user_ids
 
+    # 🟢 FIXED: Function kept empty to suppress "Joined VC" notifications
     async def _send_vc_join_notice(self, notify_chat_id: int, user_id: int, date: int = 0, source: int = 0) -> None:
-        if not self._remember_join_notice(notify_chat_id, user_id, date, source):
-            return
-
-        try:
-            user = await app.get_users(user_id)
-            name = " ".join(part for part in [user.first_name, user.last_name] if part).strip() or user.username or "Unknown User"
-            username = f" (@{user.username})" if user.username else ""
-        except Exception:
-            name = "Unknown User"
-            username = ""
-
-        await app.send_message(notify_chat_id, f"Joined VC\nName: {name}{username}\nUser ID: <code>{user_id}</code>")
+        pass
 
     async def _handle_group_call_participants_update(self, update: UpdateGroupCallParticipants) -> None:
         call_id = int(update.call.id)
@@ -640,7 +630,6 @@ class Call:
             requester_id = check[0].get("user_id")
             original_chat_id = check[0]["chat_id"]
             streamtype = check[0]["streamtype"]
-            # 🟢 FIXED: Explicitly assigning vidid from the queue to prevent 'vidid not defined' errors
             vidid = check[0].get("vidid")
             db[chat_id][0]["played"] = 0
 
@@ -799,7 +788,6 @@ class Call:
             requester_id = check[0].get("user_id")
             original_chat_id = check[0]["chat_id"]
             streamtype = check[0]["streamtype"]
-            # 🟢 FIXED: Explicitly assigning vidid from the queue to prevent 'vidid not defined' errors
             vidid = check[0].get("vidid")
             db[chat_id][0]["played"] = 0
 
@@ -958,7 +946,7 @@ class Call:
                 elif isinstance(update, StreamEnded):
                     if update.stream_type == StreamEnded.Type.AUDIO:
                         assistant = await group_assistant(self, update.chat_id)
-                        await self.change_stream(assistant, update.chat_id) # 🟢 FIXED: Called change_stream here instead of play to trigger autoplay properly
+                        await self.change_stream(assistant, update.chat_id)
             except Exception as e:
                 LOGGER(__name__).error(f"Stream Update Error: {e}")
 
