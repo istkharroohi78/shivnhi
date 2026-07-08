@@ -140,77 +140,71 @@ class Call(PyTgCalls):
         self.custom_assistants = {} 
         self.active_clients = {} 
 
-    # 🟢 FIXED: Multi-Level Fallback for Smooth Changing of Stream
+    # 🟢 FIXED: Multi-Level Fallback & CPU Optimization for Large MKV/MP4 Files
     async def _safe_change_stream(self, client, chat_id, file_path, video=False, extra_args=""):
+        # CPU ko overload se bachane ke liye ultrafast flags
+        base_ffmpeg = "-preset ultrafast -tune zerolatency -threads auto"
+        final_args = f"{base_ffmpeg} {extra_args}".strip()
+
         if not video:
-            stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH, ffmpeg_parameters=extra_args)
+            stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH, ffmpeg_parameters=final_args)
             await client.play(chat_id, stream)
             return
 
         try: 
-            # Step 1: Try High Quality (720p)
+            # Step 1: Try Medium Quality (480p) - Heavy files ke liye 720p direct try karna risky hai
             stream = MediaStream(
                 file_path, 
                 audio_parameters=AudioQuality.HIGH, 
-                video_parameters=VideoQuality.HD_720p, 
-                ffmpeg_parameters=extra_args
+                video_parameters=VideoQuality.SD_480p, 
+                ffmpeg_parameters=final_args
             )
             await client.play(chat_id, stream)
         except Exception as e:
-            LOGGER(__name__).warning(f"⚠️ 720p Stream failed in {chat_id}, switching to 480p: {e}")
+            LOGGER(__name__).warning(f"⚠️ 480p Stream failed in {chat_id}, forcing 360p (Low Quality): {e}")
             try:
-                # Step 2: Try Medium Quality (480p)
-                stream = MediaStream(
-                    file_path, 
-                    audio_parameters=AudioQuality.HIGH, 
-                    video_parameters=VideoQuality.SD_480p, 
-                    ffmpeg_parameters=extra_args
-                )
-                await client.play(chat_id, stream)
-            except Exception as e2:
-                LOGGER(__name__).warning(f"⚠️ 480p Stream failed in {chat_id}, forcing 360p (Low Quality): {e2}")
-                # Step 3: Extreme Fallback (360p) so the bot never crashes
+                # Step 2: Extreme Fallback (360p) so the bot never crashes
                 stream = MediaStream(
                     file_path, 
                     audio_parameters=AudioQuality.MEDIUM, 
                     video_parameters=VideoQuality.SD_360p, 
-                    ffmpeg_parameters=extra_args
+                    ffmpeg_parameters=final_args
                 )
                 await client.play(chat_id, stream)
+            except Exception as e2:
+                LOGGER(__name__).error(f"❌ Both qualities failed for local file: {e2}")
 
-    # 🟢 FIXED: Multi-Level Fallback for Fresh VC Join
+    # 🟢 FIXED: Safe Join Call with Ultrafast Processing
     async def _safe_join_call(self, assistant_to_join, chat_id, file_path, video=False):
+        # CPU flags for direct telegram local files
+        ffmpeg_flags = "-preset ultrafast -tune zerolatency -threads auto"
+
         if not video:
-            stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH)
+            stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH, ffmpeg_parameters=ffmpeg_flags)
             return await assistant_to_join.play(chat_id, stream)
 
         try: 
-            # Step 1: Try High Quality (720p)
+            # Step 1: Start with 480p for stability on large MKV files
             stream = MediaStream(
                 file_path, 
                 audio_parameters=AudioQuality.HIGH, 
-                video_parameters=VideoQuality.HD_720p
+                video_parameters=VideoQuality.SD_480p,
+                ffmpeg_parameters=ffmpeg_flags
             )
             await assistant_to_join.play(chat_id, stream)
         except Exception as e:
-            LOGGER(__name__).warning(f"⚠️ 720p Join Call failed in {chat_id}, auto-switching to 480p: {e}")
+            LOGGER(__name__).warning(f"⚠️ 480p Join Call failed in {chat_id}, auto-switching to 360p: {e}")
             try:
-                # Step 2: Try Medium Quality (480p)
-                stream = MediaStream(
-                    file_path, 
-                    audio_parameters=AudioQuality.HIGH, 
-                    video_parameters=VideoQuality.SD_480p
-                )
-                await assistant_to_join.play(chat_id, stream)
-            except Exception as e2:
-                LOGGER(__name__).error(f"⚠️ 480p also failed in {chat_id}, forcing 360p (Low Quality): {e2}")
-                # Step 3: Extreme Fallback (360p)
+                # Step 2: Fallback to 360p
                 stream = MediaStream(
                     file_path, 
                     audio_parameters=AudioQuality.MEDIUM, 
-                    video_parameters=VideoQuality.SD_360p
+                    video_parameters=VideoQuality.SD_360p,
+                    ffmpeg_parameters=ffmpeg_flags
                 )
                 await assistant_to_join.play(chat_id, stream)
+            except Exception as e2:
+                LOGGER(__name__).error(f"❌ PyTgCalls Failed to join with file: {e2}")
 
     async def get_active_clients(self, chat_id):
         clients = []
