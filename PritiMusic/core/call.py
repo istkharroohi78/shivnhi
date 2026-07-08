@@ -81,33 +81,25 @@ async def _clear_(chat_id):
     await remove_active_video_chat(chat_id)
     await remove_active_chat(chat_id)
 
-# 🟢 FIXED: DYNAMIC MEDIA STREAM LOGIC (Audio/Video Separation)
+# 🟢 VIVAAN'S MASTER HACK: DYNAMIC MEDIA STREAM (FIXED NONETYPE ERROR)
 def dynamic_media_stream(path: str, video: bool = False, ffmpeg_params: str = None) -> MediaStream:
     if not path:
         raise TypeError("Argument 'path' cannot be None or empty.")
     
-    # 🟢 Audio ke liye sirf -threads 1 (CPU bachane ke liye), video parameters nahi chahiye
-    if video:
-        base_ffmpeg = "-preset ultrafast -tune fastdecode -threads 1 -x264opts no-scenecut"
-    else:
-        base_ffmpeg = "-threads 1"
-
+    # Heroku Safe FFmpeg parameters
+    base_ffmpeg = "-preset ultrafast -tune fastdecode -threads 1 -x264opts no-scenecut"
     final_ffmpeg = f"{base_ffmpeg} {ffmpeg_params}".strip() if ffmpeg_params else base_ffmpeg
 
-    if video:
-        return MediaStream(
-            media_path=path,
-            audio_parameters=AudioQuality.MEDIUM,
-            video_parameters=VideoQuality.SD_360p,
-            ffmpeg_parameters=final_ffmpeg,
-        )
-    else:
-        return MediaStream(
-            media_path=path,
-            audio_parameters=AudioQuality.HIGH,
-            video_flags=MediaStream.Flags.IGNORE,
-            ffmpeg_parameters=final_ffmpeg,
-        )
+    return MediaStream(
+        media_path=path,
+        audio_parameters=AudioQuality.MEDIUM if video else AudioQuality.HIGH,
+        # VIVAAN TRICK: Hamesha VideoQuality bhejni hai (Audio ho ya Video), taaki 'NoneType' error bypass ho jaye
+        video_parameters=VideoQuality.SD_360p if video else VideoQuality.SD_360p,
+        # Agar Audio hai, toh bas FLAGS.IGNORE kar do!
+        video_flags=(MediaStream.Flags.AUTO_DETECT if video else MediaStream.Flags.IGNORE),
+        ffmpeg_parameters=final_ffmpeg,
+    )
+
 
 class Call(PyTgCalls):
     def __init__(self):
