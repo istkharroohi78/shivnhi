@@ -10,7 +10,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.enums import ParseMode
 
 from pytgcalls import PyTgCalls
-from pytgcalls.types import MediaStream, AudioQuality, VideoQuality
+from pytgcalls.types import MediaStream, AudioQuality, VideoQuality, ChatUpdate, StreamEnded, Update
 
 import config
 from PritiMusic import LOGGER, YouTube, app
@@ -81,6 +81,26 @@ async def _clear_(chat_id):
     await remove_active_video_chat(chat_id)
     await remove_active_chat(chat_id)
 
+# 🟢 DYNAMIC MEDIA STREAM LOGIC (HEROKU SAFE)
+def dynamic_media_stream(path: str, video: bool = False, ffmpeg_params: str = None) -> MediaStream:
+    if not path:
+        raise TypeError("Argument 'path' cannot be None or empty.")
+    
+    # Heroku Safe FFmpeg parameters (Prevents RAM overload & OOM Kills)
+    base_ffmpeg = "-preset ultrafast -tune fastdecode -threads 1 -x264opts no-scenecut"
+    if ffmpeg_params:
+        final_ffmpeg = f"{base_ffmpeg} {ffmpeg_params}".strip()
+    else:
+        final_ffmpeg = base_ffmpeg
+
+    return MediaStream(
+        media_path=path,
+        audio_parameters=AudioQuality.MEDIUM if video else AudioQuality.HIGH,
+        video_parameters=VideoQuality.SD_360p if video else None,
+        video_flags=(MediaStream.Flags.AUTO_DETECT if video else MediaStream.Flags.IGNORE),
+        ffmpeg_parameters=final_ffmpeg,
+    )
+
 
 class Call(PyTgCalls):
     def __init__(self):
@@ -140,69 +160,23 @@ class Call(PyTgCalls):
         self.custom_assistants = {} 
         self.active_clients = {} 
 
-    # 🟢 FIXED: HEROKU LOW-RAM OPTIMIZATION (Strict 360p/240p limit)
+    # 🟢 DIRECT ERROR THROW & DYNAMIC STREAM FOR CHANGE
     async def _safe_change_stream(self, client, chat_id, file_path, video=False, extra_args=""):
-        # Heroku 512MB RAM limit ke liye strictly -threads 1 aur fastdecode lagana zaroori hai
-        base_ffmpeg = "-preset ultrafast -tune fastdecode -threads 1"
-        final_args = f"{base_ffmpeg} {extra_args}".strip()
-
-        if not video:
-            stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH, ffmpeg_parameters=final_args)
-            await client.play(chat_id, stream)
-            return
-
         try: 
-            # Step 1: Start with 360p direct for Heroku (no 720p/480p to prevent immediate crash)
-            stream = MediaStream(
-                file_path, 
-                audio_parameters=AudioQuality.MEDIUM, 
-                video_parameters=VideoQuality.SD_360p, 
-                ffmpeg_parameters=final_args
-            )
+            stream = dynamic_media_stream(path=file_path, video=video, ffmpeg_params=extra_args)
             await client.play(chat_id, stream)
         except Exception as e:
-            LOGGER(__name__).warning(f"⚠️ 360p Stream failed in {chat_id}, forcing 240p (Lowest Quality): {e}")
-            try:
-                # Step 2: Extreme Heroku Fallback (240p)
-                stream = MediaStream(
-                    file_path, 
-                    audio_parameters=AudioQuality.LOW, 
-                    video_parameters=VideoQuality.SD_240p, 
-                    ffmpeg_parameters=final_args
-                )
-                await client.play(chat_id, stream)
-            except Exception as e2:
-                LOGGER(__name__).error(f"❌ All qualities failed. Heroku RAM maxed out: {e2}")
+            LOGGER(__name__).error(f"❌ Stream Change Failed in {chat_id}: {e}")
+            raise AssistantErr(f"PyTgCalls Error: {e}")
 
-    # 🟢 FIXED: HEROKU SAFE JOIN CALL
+    # 🟢 DIRECT ERROR THROW & DYNAMIC STREAM FOR JOIN
     async def _safe_join_call(self, assistant_to_join, chat_id, file_path, video=False):
-        ffmpeg_flags = "-preset ultrafast -tune fastdecode -threads 1"
-
-        if not video:
-            stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH, ffmpeg_parameters=ffmpeg_flags)
-            return await assistant_to_join.play(chat_id, stream)
-
         try: 
-            # Heroku ke liye strictly 360p
-            stream = MediaStream(
-                file_path, 
-                audio_parameters=AudioQuality.MEDIUM, 
-                video_parameters=VideoQuality.SD_360p,
-                ffmpeg_parameters=ffmpeg_flags
-            )
+            stream = dynamic_media_stream(path=file_path, video=video)
             await assistant_to_join.play(chat_id, stream)
         except Exception as e:
-            LOGGER(__name__).warning(f"⚠️ 360p Join Call failed in {chat_id}, auto-switching to 240p: {e}")
-            try:
-                stream = MediaStream(
-                    file_path, 
-                    audio_parameters=AudioQuality.LOW, 
-                    video_parameters=VideoQuality.SD_240p,
-                    ffmpeg_parameters=ffmpeg_flags
-                )
-                await assistant_to_join.play(chat_id, stream)
-            except Exception as e2:
-                LOGGER(__name__).error(f"❌ PyTgCalls Failed on Heroku: {e2}")
+            LOGGER(__name__).error(f"❌ Join Call Failed in {chat_id}: {e}")
+            raise AssistantErr(f"PyTgCalls Error: {e}")
 
     async def get_active_clients(self, chat_id):
         clients = []
@@ -402,7 +376,6 @@ class Call(PyTgCalls):
             except: pass
 
     async def change_stream(self, client, chat_id):
-        # 🟢 ROUTING FIX
         active_assistants = await self.get_active_clients(chat_id)
         client = active_assistants[0] if active_assistants else client
 
