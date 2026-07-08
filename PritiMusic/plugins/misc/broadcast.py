@@ -23,6 +23,17 @@ from PritiMusic.utils.formatters import alpha_to_int
 IS_BROADCASTING = False
 
 # ==========================================
+# PROGRESS BAR HELPER
+# ==========================================
+def get_progress_bar(current, total, length=20):
+    if total == 0:
+        return "▱" * length
+    percent = current / total
+    filled_len = int(length * percent)
+    bar = "▰" * filled_len + "▱" * (length - filled_len)
+    return bar
+
+# ==========================================
 # SELF PROMO DATABASE SETUP
 # ==========================================
 dbclient = AsyncIOMotorClient(MONGO_DB_URI)
@@ -55,7 +66,7 @@ async def delete_promo_record(chat_id: int, message_id: int):
 # ==========================================
 PROMO_IMAGE = "https://files.catbox.moe/u4db8r.jpg"
 PROMO_TEXT = """
-⊚ ᴛʜɪꜱ ɪꜱ ✶ 🎀 ᴍᴀʜɪ ᴍᴜꜱɪᴄ ᴄʟᴏɴᴇ🎀 ✶
+⊚ ᴛʜɪꜱ ɪꜱ [✶ 🎀 ᴍᴀʜɪ ᴍᴜꜱɪᴄ ᴄʟᴏɴᴇ🎀 ✶](https://t.me/clone_MUSICrobot)
 
 ➻ ᴧ ᴘʀєᴍɪᴜᴍ ᴅєꜱɪɢηєᴅ ϻᴜꜱɪᴄ ᴘʟᴧʏєʀ ʙσᴛ ꜰσʀ ᴛєʟєɢʀᴧϻ ɢʀσᴜᴘ & ᴄʜᴧηηєʟ. 
 🎧 24x7 ᴍᴜꜱɪᴄ • ꜱᴍᴏᴏᴛʜ ᴀɴᴅ ꜰᴀꜱᴛ ᴘʟᴀʏʙᴀᴄᴋ
@@ -65,7 +76,7 @@ PROMO_TEXT = """
 ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ, ᴍᴀᴋᴇ ᴍᴇ ᴀᴅᴍɪɴ, ᴀɴᴅ ꜱᴇɴᴅ /play song name ᴛᴏ ꜱᴛᴀʀᴛ ᴛʜᴇ ᴍᴜꜱɪᴄ.
 """
 PROMO_BUTTON = InlineKeyboardMarkup(
-    [[InlineKeyboardButton("🎵Aᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ🎧", url="https://t.me/clone_MUSICrobot")]]
+    [[InlineKeyboardButton("🎵 Aᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ 🎧", url="https://t.me/clone_MUSICrobot")]]
 )
 
 
@@ -199,16 +210,36 @@ async def braodcast_message(client, message, _):
 
 
 # ==========================================
-# NEW: SELF PROMO BROADCAST LOGIC
+# UPDATED: SELF PROMO BROADCAST LOGIC
 # ==========================================
-async def run_promo_broadcast():
+async def run_promo_broadcast(status_message=None):
     await broadcast_time_db.update_one({"_id": "last_run"}, {"$set": {"time": int(time.time())}}, upsert=True)
     
     users = await get_served_users()
     chats = await get_served_chats()
 
+    total_users = len(users)
+    total_chats = len(chats)
+    total_targets = total_users + total_chats
+
     u_success, u_failed = 0, 0
     g_success, g_failed = 0, 0
+    completed = 0
+
+    async def update_progress():
+        if status_message and completed % 10 == 0:  # Update message every 10 sends to avoid floodwait
+            bar = get_progress_bar(completed, total_targets)
+            percent = int((completed / total_targets) * 100) if total_targets else 100
+            text = (
+                f"🔄 **Live Promo Broadcasting...**\n\n"
+                f"[{bar}] **{percent}%**\n\n"
+                f"👥 **Users:** ✅ {u_success} | ❌ {u_failed}\n"
+                f"🏘 **Groups:** ✅ {g_success} | ❌ {g_failed}"
+            )
+            try:
+                await status_message.edit_text(text)
+            except Exception:
+                pass
 
     for user in users:
         user_id = user["user_id"] if isinstance(user, dict) else user
@@ -220,6 +251,9 @@ async def run_promo_broadcast():
             await asyncio.sleep(e.value)
         except Exception:
             u_failed += 1
+        
+        completed += 1
+        await update_progress()
         await asyncio.sleep(0.5)
 
     for chat in chats:
@@ -232,6 +266,9 @@ async def run_promo_broadcast():
             await asyncio.sleep(e.value)
         except Exception:
             g_failed += 1
+        
+        completed += 1
+        await update_progress()
         await asyncio.sleep(0.5)
 
     return u_success, u_failed, g_success, g_failed
@@ -256,10 +293,17 @@ async def promo_toggle_cmd(client, message):
         await set_promo_status(False)
         await message.reply_text("❌ **Auto Self Promo Stopped!**")
     elif state == "run":
-        status_msg = await message.reply_text("🔄 **Manual Broadcast Started...** Please wait.")
+        status_msg = await message.reply_text("🔄 **Calculating stats & initializing broadcast...**")
         try:
-            u_success, u_failed, g_success, g_failed = await run_promo_broadcast()
-            stats_text = f"📢 **Manual Promo Completed**\n\n👥 **Users:** ✅ {u_success} | ❌ {u_failed}\n🏘 **Groups:** ✅ {g_success} | ❌ {g_failed}"
+            # We pass the status_msg so the function can edit it live
+            u_success, u_failed, g_success, g_failed = await run_promo_broadcast(status_message=status_msg)
+            
+            # Final completion message
+            stats_text = (
+                f"📢 **Manual Promo Completed** ✅\n\n"
+                f"👥 **Users:** ✅ {u_success} | ❌ {u_failed}\n"
+                f"🏘 **Groups:** ✅ {g_success} | ❌ {g_failed}"
+            )
             await status_msg.edit_text(stats_text)
             if LOGGER_ID:
                 await app.send_message(LOGGER_ID, stats_text)
