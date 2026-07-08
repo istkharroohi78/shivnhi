@@ -325,23 +325,23 @@ class Call:
                     LOGGER(__name__).warning("Retrying stream play for chat %s after hitting open-file limit.", chat_id)
                     await asyncio.sleep(1)
 
-    async def pause_stream(self, chat_id: int) -> None:
+    async def pause_stream(self, chat_id: int, assistant_type=None, **kwargs) -> None:
         assistant = await group_assistant(self, chat_id)
         await assistant.pause(chat_id)
 
-    async def resume_stream(self, chat_id: int) -> None:
+    async def resume_stream(self, chat_id: int, assistant_type=None, **kwargs) -> None:
         assistant = await group_assistant(self, chat_id)
         await assistant.resume(chat_id)
 
-    async def mute_stream(self, chat_id: int) -> None:
+    async def mute_stream(self, chat_id: int, assistant_type=None, **kwargs) -> None:
         assistant = await group_assistant(self, chat_id)
         await assistant.mute(chat_id)
 
-    async def unmute_stream(self, chat_id: int) -> None:
+    async def unmute_stream(self, chat_id: int, assistant_type=None, **kwargs) -> None:
         assistant = await group_assistant(self, chat_id)
         await assistant.unmute(chat_id)
 
-    async def stop_stream(self, chat_id: int) -> None:
+    async def stop_stream(self, chat_id: int, assistant_type=None, **kwargs) -> None:
         assistant = await group_assistant(self, chat_id)
         await self.stop_vc_join_notifier(chat_id)
         await _clear_(chat_id)
@@ -350,7 +350,7 @@ class Call:
         except Exception: pass
         finally: self.active_calls.discard(chat_id)
 
-    async def stop_stream_force(self, chat_id: int) -> None:
+    async def stop_stream_force(self, chat_id: int, **kwargs) -> None:
         assistant = await group_assistant(self, chat_id)
         await self.stop_vc_join_notifier(chat_id)
         try:
@@ -365,10 +365,10 @@ class Call:
         except Exception: pass
         finally: self.active_calls.discard(chat_id)
 
-    async def force_stop_stream(self, chat_id: int) -> None:
+    async def force_stop_stream(self, chat_id: int, **kwargs) -> None:
         await self.stop_stream_force(chat_id)
 
-    async def skip_stream(self, chat_id: int, link: str, video: Union[bool, str] = None, image: Union[bool, str] = None) -> None:
+    async def skip_stream(self, chat_id: int, link: str, video: Union[bool, str] = None, image: Union[bool, str] = None, userbot=None, **kwargs) -> None:
         if not link:
             LOGGER(__name__).warning(f"skip_stream received None/empty link for chat: {chat_id}")
             return
@@ -376,12 +376,12 @@ class Call:
         stream = dynamic_media_stream(path=link, video=bool(video))
         await self._play_stream(assistant, chat_id, stream)
 
-    async def vc_users(self, chat_id: int) -> list:
+    async def vc_users(self, chat_id: int, **kwargs) -> list:
         assistant = await group_assistant(self, chat_id)
         participants = await assistant.get_participants(chat_id)
         return [p.user_id for p in participants if not getattr(p, "is_muted", False)]
 
-    async def seek_stream(self, chat_id: int, file_path: str, to_seek: str, duration: str, mode: str) -> None:
+    async def seek_stream(self, chat_id: int, file_path: str, to_seek: str, duration: str, mode: str, **kwargs) -> None:
         if not file_path: return
         assistant = await group_assistant(self, chat_id)
         ffmpeg_params = f"-ss {to_seek} -to {duration}"
@@ -389,7 +389,7 @@ class Call:
         stream = dynamic_media_stream(path=file_path, video=is_video, ffmpeg_params=ffmpeg_params)
         await self._play_stream(assistant, chat_id, stream)
 
-    async def speedup_stream(self, chat_id: int, file_path: str, speed: float, playing: list) -> None:
+    async def speedup_stream(self, chat_id: int, file_path: str, speed: float, playing: list, **kwargs) -> None:
         assistant = await group_assistant(self, chat_id)
         base = os.path.basename(file_path)
         chatdir = os.path.join("playback", str(speed))
@@ -425,7 +425,7 @@ class Call:
             "old_dur": db[chat_id][0].get("dur"), "old_second": db[chat_id][0].get("seconds"),
         })
 
-    async def stream_call(self, link: str) -> None:
+    async def stream_call(self, link: str, **kwargs) -> None:
         if not link: return
         assistant = await group_assistant(self, config.LOGGER_ID)
         try:
@@ -442,6 +442,8 @@ class Call:
         link: str,
         video: Union[bool, str] = None,
         image: Union[bool, str] = None,
+        userbot=None,
+        **kwargs,
     ) -> None:
         if not link: raise AssistantErr("Stream link path cannot be empty.")
         assistant = await group_assistant(self, chat_id)
@@ -477,7 +479,6 @@ class Call:
                     autoend[chat_id] = datetime.now() + timedelta(minutes=1)
             except: pass
 
-    # 🟢 FULL SPOTIFY-STYLE AUTOPLAY LOGIC INTEGRATED HERE
     async def _enqueue_autoplay_track(self, chat_id: int, popped: dict) -> bool:
         try:
             from PritiMusic.utils.database.autoplay import is_autoplay_group
@@ -600,7 +601,7 @@ class Call:
             LOGGER(__name__).error(f"❌ Critical Autoplay exception: {e}")
         return False
 
-    async def play(self, client, chat_id: int) -> None:
+    async def change_stream(self, client, chat_id):
         check = db.get(chat_id)
         popped = None
         loop = await get_loop(chat_id)
@@ -639,7 +640,8 @@ class Call:
             requester_id = check[0].get("user_id")
             original_chat_id = check[0]["chat_id"]
             streamtype = check[0]["streamtype"]
-            videoid = check[0]["vidid"]
+            # 🟢 FIXED: Explicitly assigning vidid from the queue to prevent 'vidid not defined' errors
+            vidid = check[0].get("vidid")
             db[chat_id][0]["played"] = 0
 
             exis = (check[0]).get("old_dur")
@@ -652,7 +654,7 @@ class Call:
             video = True if str(streamtype) == "video" else False
 
             if "live_" in queued:
-                n, link = await YouTube.video(videoid, True)
+                n, link = await YouTube.video(vidid, True)
                 if n == 0 or not link: return await app.send_message(original_chat_id, text=_["call_6"])
                 stream = dynamic_media_stream(path=link, video=video)
                 try: await self._play_stream(client, chat_id, stream)
@@ -660,10 +662,10 @@ class Call:
 
                 button = stream_markup(_, chat_id)
                 try:
-                    img = await get_thumb(videoid, requester_id, app) or get_random_img(config.PLAYLIST_IMG_URL)
+                    img = await get_thumb(vidid, requester_id, app) or get_random_img(config.PLAYLIST_IMG_URL)
                     run = await app.send_photo(
                         original_chat_id, photo=img,
-                        caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{videoid}", title[:23], check[0]["dur"], user),
+                        caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{vidid}", title[:23], check[0]["dur"], user),
                         reply_markup=InlineKeyboardMarkup(button)
                     )
                     db[chat_id][0]["mystic"] = run
@@ -674,14 +676,14 @@ class Call:
                 mystic = await app.send_message(original_chat_id, _["call_7"])
                 file_path = None
                 try:
-                    file_path, direct = await YouTube.download(videoid, mystic, video=video, videoid=vidid)
+                    file_path, direct = await YouTube.download(vidid, mystic, video=video, videoid=vidid)
                 except Exception as download_err:
                     LOGGER(__name__).error(f"YouTube extraction failed: {download_err}")
 
                 if not file_path:
                     try: await mystic.edit_text("❌ Download failed. Skipping track...")
                     except: pass
-                    return await self.play(client, chat_id)
+                    return await self.change_stream(client, chat_id)
 
                 stream = dynamic_media_stream(path=file_path, video=video)
                 try: await self._play_stream(client, chat_id, stream)
@@ -692,10 +694,10 @@ class Call:
                 except: pass
                 
                 try:
-                    img = await get_thumb(videoid, requester_id, app) or get_random_img(config.PLAYLIST_IMG_URL)
+                    img = await get_thumb(vidid, requester_id, app) or get_random_img(config.PLAYLIST_IMG_URL)
                     run = await app.send_photo(
                         original_chat_id, photo=img,
-                        caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{videoid}", title[:23], check[0]["dur"], user),
+                        caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{vidid}", title[:23], check[0]["dur"], user),
                         reply_markup=InlineKeyboardMarkup(button)
                     )
                     db[chat_id][0]["mystic"] = run
@@ -703,7 +705,7 @@ class Call:
                 except: pass
 
             elif "index_" in queued:
-                stream = dynamic_media_stream(path=videoid, video=video)
+                stream = dynamic_media_stream(path=vidid, video=video)
                 try: await self._play_stream(client, chat_id, stream)
                 except: return await app.send_message(original_chat_id, text=_["call_6"])
 
@@ -722,7 +724,7 @@ class Call:
                 try: await self._play_stream(client, chat_id, stream)
                 except: return await app.send_message(original_chat_id, text=_["call_6"])
 
-                if videoid == "telegram":
+                if vidid == "telegram":
                     button = stream_markup(_, chat_id)
                     try:
                         run = await app.send_photo(
@@ -734,7 +736,7 @@ class Call:
                         db[chat_id][0]["mystic"] = run
                         db[chat_id][0]["markup"] = "tg"
                     except: pass
-                elif videoid in ["soundcloud", "spotify", "apple", "jiosaavn"]:
+                elif vidid in ["soundcloud", "spotify", "apple", "jiosaavn"]:
                     button = stream_markup(_, chat_id)
                     try:
                         run = await app.send_photo(
@@ -748,10 +750,169 @@ class Call:
                 else:
                     button = stream_markup(_, chat_id)
                     try:
-                        img = await get_thumb(videoid, requester_id, app) or get_random_img(config.PLAYLIST_IMG_URL)
+                        img = await get_thumb(vidid, requester_id, app) or get_random_img(config.PLAYLIST_IMG_URL)
                         run = await app.send_photo(
                             original_chat_id, photo=img,
-                            caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{videoid}", title[:23], check[0]["dur"], user),
+                            caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{vidid}", title[:23], check[0]["dur"], user),
+                            reply_markup=InlineKeyboardMarkup(button)
+                        )
+                        db[chat_id][0]["mystic"] = run
+                        db[chat_id][0]["markup"] = "stream"
+                    except: pass
+
+    async def play(self, client, chat_id: int, **kwargs) -> None:
+        check = db.get(chat_id)
+        popped = None
+        loop = await get_loop(chat_id)
+        try:
+            if loop == 0:
+                popped = check.pop(0)
+            else:
+                loop = loop - 1
+                await set_loop(chat_id, loop)
+            await auto_clean(popped)
+            if not check:
+                if await self._enqueue_autoplay_track(chat_id, popped):
+                    check = db.get(chat_id)
+                if not check:
+                    await _clear_(chat_id)
+                    if chat_id in self.active_calls:
+                        try: await client.leave_call(chat_id)
+                        except: pass
+                        finally: self.active_calls.discard(chat_id)
+                    return
+        except:
+            try:
+                await _clear_(chat_id)
+                return await client.leave_call(chat_id)
+            except:
+                return
+        else:
+            queued = check[0]["file"]
+            try:
+                language = await get_lang(chat_id)
+                _ = get_string(language)
+            except:
+                _ = get_string("en")
+            title = (check[0]["title"]).title()
+            user = check[0]["by"]
+            requester_id = check[0].get("user_id")
+            original_chat_id = check[0]["chat_id"]
+            streamtype = check[0]["streamtype"]
+            # 🟢 FIXED: Explicitly assigning vidid from the queue to prevent 'vidid not defined' errors
+            vidid = check[0].get("vidid")
+            db[chat_id][0]["played"] = 0
+
+            exis = (check[0]).get("old_dur")
+            if exis:
+                db[chat_id][0]["dur"] = exis
+                db[chat_id][0]["seconds"] = check[0]["old_second"]
+                db[chat_id][0]["speed_path"] = None
+                db[chat_id][0]["speed"] = 1.0
+
+            video = True if str(streamtype) == "video" else False
+
+            if "live_" in queued:
+                n, link = await YouTube.video(vidid, True)
+                if n == 0 or not link: return await app.send_message(original_chat_id, text=_["call_6"])
+                stream = dynamic_media_stream(path=link, video=video)
+                try: await self._play_stream(client, chat_id, stream)
+                except Exception: return await app.send_message(original_chat_id, text=_["call_6"])
+
+                button = stream_markup(_, chat_id)
+                try:
+                    img = await get_thumb(vidid, requester_id, app) or get_random_img(config.PLAYLIST_IMG_URL)
+                    run = await app.send_photo(
+                        original_chat_id, photo=img,
+                        caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{vidid}", title[:23], check[0]["dur"], user),
+                        reply_markup=InlineKeyboardMarkup(button)
+                    )
+                    db[chat_id][0]["mystic"] = run
+                    db[chat_id][0]["markup"] = "stream"
+                except: pass
+
+            elif "vid_" in queued:
+                mystic = await app.send_message(original_chat_id, _["call_7"])
+                file_path = None
+                try:
+                    file_path, direct = await YouTube.download(vidid, mystic, video=video, videoid=vidid)
+                except Exception as download_err:
+                    LOGGER(__name__).error(f"YouTube extraction failed: {download_err}")
+
+                if not file_path:
+                    try: await mystic.edit_text("❌ Download failed. Skipping track...")
+                    except: pass
+                    return await self.play(client, chat_id)
+
+                stream = dynamic_media_stream(path=file_path, video=video)
+                try: await self._play_stream(client, chat_id, stream)
+                except: return await app.send_message(original_chat_id, text=_["call_6"])
+
+                button = stream_markup(_, chat_id)
+                try: await mystic.delete()
+                except: pass
+                
+                try:
+                    img = await get_thumb(vidid, requester_id, app) or get_random_img(config.PLAYLIST_IMG_URL)
+                    run = await app.send_photo(
+                        original_chat_id, photo=img,
+                        caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{vidid}", title[:23], check[0]["dur"], user),
+                        reply_markup=InlineKeyboardMarkup(button)
+                    )
+                    db[chat_id][0]["mystic"] = run
+                    db[chat_id][0]["markup"] = "stream"
+                except: pass
+
+            elif "index_" in queued:
+                stream = dynamic_media_stream(path=vidid, video=video)
+                try: await self._play_stream(client, chat_id, stream)
+                except: return await app.send_message(original_chat_id, text=_["call_6"])
+
+                button = stream_markup(_, chat_id)
+                try:
+                    run = await app.send_photo(
+                        chat_id=original_chat_id, photo=config.STREAM_IMG_URL,
+                        caption=_["stream_2"].format(user), reply_markup=InlineKeyboardMarkup(button),
+                    )
+                    db[chat_id][0]["mystic"] = run
+                    db[chat_id][0]["markup"] = "tg"
+                except: pass
+
+            else:
+                stream = dynamic_media_stream(path=queued, video=video)
+                try: await self._play_stream(client, chat_id, stream)
+                except: return await app.send_message(original_chat_id, text=_["call_6"])
+
+                if vidid == "telegram":
+                    button = stream_markup(_, chat_id)
+                    try:
+                        run = await app.send_photo(
+                            chat_id=original_chat_id,
+                            photo=config.TELEGRAM_VIDEO_URL if video else config.TELEGRAM_AUDIO_URL,
+                            caption=_["stream_1"].format(config.SUPPORT_CHAT, title[:23], check[0]["dur"], user),
+                            reply_markup=InlineKeyboardMarkup(button),
+                        )
+                        db[chat_id][0]["mystic"] = run
+                        db[chat_id][0]["markup"] = "tg"
+                    except: pass
+                elif vidid in ["soundcloud", "spotify", "apple", "jiosaavn"]:
+                    button = stream_markup(_, chat_id)
+                    try:
+                        run = await app.send_photo(
+                            chat_id=original_chat_id, photo=config.SOUNCLOUD_IMG_URL,
+                            caption=_["stream_1"].format(config.SUPPORT_CHAT, title[:23], check[0]["dur"], user),
+                            reply_markup=InlineKeyboardMarkup(button),
+                        )
+                        db[chat_id][0]["mystic"] = run
+                        db[chat_id][0]["markup"] = "tg"
+                    except: pass
+                else:
+                    button = stream_markup(_, chat_id)
+                    try:
+                        img = await get_thumb(vidid, requester_id, app) or get_random_img(config.PLAYLIST_IMG_URL)
+                        run = await app.send_photo(
+                            original_chat_id, photo=img,
+                            caption=_["stream_1"].format(f"https://t.me/{app.username}?start=info_{vidid}", title[:23], check[0]["dur"], user),
                             reply_markup=InlineKeyboardMarkup(button)
                         )
                         db[chat_id][0]["mystic"] = run
@@ -797,7 +958,7 @@ class Call:
                 elif isinstance(update, StreamEnded):
                     if update.stream_type == StreamEnded.Type.AUDIO:
                         assistant = await group_assistant(self, update.chat_id)
-                        await self.play(assistant, update.chat_id)
+                        await self.change_stream(assistant, update.chat_id) # 🟢 FIXED: Called change_stream here instead of play to trigger autoplay properly
             except Exception as e:
                 LOGGER(__name__).error(f"Stream Update Error: {e}")
 
@@ -806,7 +967,6 @@ class Call:
                 if isinstance(update, UpdateGroupCallParticipants):
                     await self._handle_group_call_participants_update(update)
             except Exception:
-                # 🟢 FIXED: Removed VC Notify Error logger as requested
                 pass
 
         for assistant in assistants:
