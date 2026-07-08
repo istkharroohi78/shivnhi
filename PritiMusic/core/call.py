@@ -21,7 +21,7 @@ from pytgcalls.types import AudioQuality, ChatUpdate, MediaStream, StreamEnded, 
 
 import config
 from strings import get_string
-from PritiMusic.utils.logger import autoplay_log # Make sure yeh logger aapke pas ho ya hata dein agar error de
+# from PritiMusic.utils.logger import autoplay_log # If you don't have this, comment it out
 from PritiMusic import LOGGER, YouTube, app
 from PritiMusic.misc import db
 from PritiMusic.utils.database import (
@@ -41,7 +41,7 @@ from PritiMusic.utils.formatters import check_duration, seconds_to_min, speed_co
 
 from PritiMusic.utils.inline.play import stream_markup
 from PritiMusic.utils.stream.autoclear import auto_clean
-# Agar aapke paas schedule_stream_card nahi hai toh is line ko hata kar direct app.send_photo use karein aage
+# from PritiMusic.utils.stream.cards import schedule_stream_card # Use app.send_photo instead if missing
 from PritiMusic.utils.thumbnails import get_thumb
 
 autoend = {}
@@ -58,11 +58,9 @@ def dynamic_media_stream(path: str, video: bool = False, ffmpeg_params: str = No
     if not path:
         raise TypeError("Argument 'path' cannot be None or empty.")
     
-    # Safe FFmpeg parameters for low RAM / stability
     base_ffmpeg = "-threads 1"
     final_ffmpeg = f"{base_ffmpeg} {ffmpeg_params}".strip() if ffmpeg_params else base_ffmpeg
 
-    # Dictionary banakar sirf zaroori parameters bhejenge
     kwargs = {
         "media_path": path,
         "audio_parameters": AudioQuality.MEDIUM if video else AudioQuality.HIGH,
@@ -104,30 +102,44 @@ async def _clear_(chat_id: int) -> None:
 
 class Call:
     def __init__(self):
+        # 🟢 SAFE CONFIG CHECK (Fix for AttributeError: 'config' has no attribute 'STRING3')
+        str1 = getattr(config, "STRING1", None)
         self.userbot1 = Client(
-            "LuckyAss1", config.API_ID, config.API_HASH, session_string=config.STRING1
-        ) if config.STRING1 else None
+            "LuckyAss1", api_id=getattr(config, "API_ID", None), api_hash=getattr(config, "API_HASH", None), session_string=str(str1)
+        ) if str1 else None
         self.one = PyTgCalls(self.userbot1) if self.userbot1 else None
 
-        self.userbot2 = Client(
-            "LuckyAss2", config.API_ID, config.API_HASH, session_string=config.STRING2
-        ) if config.STRING2 else None
-        self.two = PyTgCalls(self.userbot2) if self.userbot2 else None
+        str2 = getattr(config, "STRING2", None)
+        self.two = None
+        if str2:
+            self.userbot2 = Client(
+                "LuckyAss2", api_id=getattr(config, "API_ID", None), api_hash=getattr(config, "API_HASH", None), session_string=str(str2)
+            )
+            self.two = PyTgCalls(self.userbot2)
 
-        self.userbot3 = Client(
-            "LuckyAss3", config.API_ID, config.API_HASH, session_string=config.STRING3
-        ) if config.STRING3 else None
-        self.three = PyTgCalls(self.userbot3) if self.userbot3 else None
+        str3 = getattr(config, "STRING3", None)
+        self.three = None
+        if str3:
+            self.userbot3 = Client(
+                "LuckyAss3", api_id=getattr(config, "API_ID", None), api_hash=getattr(config, "API_HASH", None), session_string=str(str3)
+            )
+            self.three = PyTgCalls(self.userbot3)
 
-        self.userbot4 = Client(
-            "LuckyAss4", config.API_ID, config.API_HASH, session_string=config.STRING4
-        ) if config.STRING4 else None
-        self.four = PyTgCalls(self.userbot4) if self.userbot4 else None
+        str4 = getattr(config, "STRING4", None)
+        self.four = None
+        if str4:
+            self.userbot4 = Client(
+                "LuckyAss4", api_id=getattr(config, "API_ID", None), api_hash=getattr(config, "API_HASH", None), session_string=str(str4)
+            )
+            self.four = PyTgCalls(self.userbot4)
 
-        self.userbot5 = Client(
-            "LuckyAss5", config.API_ID, config.API_HASH, session_string=config.STRING5
-        ) if config.STRING5 else None
-        self.five = PyTgCalls(self.userbot5) if self.userbot5 else None
+        str5 = getattr(config, "STRING5", None)
+        self.five = None
+        if str5:
+            self.userbot5 = Client(
+                "LuckyAss5", api_id=getattr(config, "API_ID", None), api_hash=getattr(config, "API_HASH", None), session_string=str(str5)
+            )
+            self.five = PyTgCalls(self.userbot5)
 
         self.active_calls: set[int] = set()
         self._stream_locks: dict[int, asyncio.Lock] = {}
@@ -226,8 +238,6 @@ class Call:
             return
 
         notify_chat_id = mapping["notify_chat_id"]
-        # Make sure get_vcnotify is available in database.py
-        # if not await get_vcnotify(notify_chat_id): return
 
         member_snapshot = vc_join_snapshots.setdefault(mapping["chat_id"], set())
 
@@ -252,11 +262,6 @@ class Call:
     async def _vc_join_monitor_loop(self, chat_id: int, notify_chat_id: int) -> None:
         try:
             while True:
-                # if not await get_vcnotify(notify_chat_id):
-                #     vc_join_snapshots.pop(chat_id, None)
-                #     await asyncio.sleep(1)
-                #     continue
-
                 try:
                     current_ids = await self._fetch_vc_participant_ids(chat_id)
                 except Exception:
@@ -286,8 +291,6 @@ class Call:
                 vc_join_monitors.pop(chat_id, None)
 
     async def maybe_start_vc_join_notifier(self, chat_id: int, notify_chat_id: int) -> bool:
-        # if not await get_vcnotify(notify_chat_id): return False
-
         call_id = await self._resolve_vc_call_id(chat_id)
         vc_join_targets[chat_id] = notify_chat_id
         if call_id:
@@ -386,9 +389,6 @@ class Call:
         await self._play_stream(assistant, chat_id, stream)
 
     async def speedup_stream(self, chat_id: int, file_path: str, speed: float, playing: list) -> None:
-        if not file_path or not isinstance(playing, list) or not playing or not isinstance(playing[0], dict):
-            raise AssistantErr("Invalid stream info for speedup.")
-
         assistant = await group_assistant(self, chat_id)
         base = os.path.basename(file_path)
         chatdir = os.path.join("playback", str(speed))
@@ -417,8 +417,6 @@ class Call:
 
         if chat_id in db and db[chat_id] and db[chat_id][0].get("file") == file_path:
             await self._play_stream(assistant, chat_id, stream)
-        else:
-            raise AssistantErr("Stream mismatch during speedup.")
 
         db[chat_id][0].update({
             "played": con_seconds, "dur": duration_min, "seconds": dur,
@@ -478,211 +476,6 @@ class Call:
                     autoend[chat_id] = datetime.now() + timedelta(minutes=1)
             except: pass
 
-    async def _log_autoplay(self, chat_id: int, prev_title: str, next_title: str):
-        if not config.LOGGER_ID: return
-        try:
-            chat = await app.get_chat(chat_id)
-            chat_name = chat.title or "Unknown Group"
-            chat_link = chat.invite_link
-            if not chat_link and chat.username: chat_link = f"https://t.me/{chat.username}"
-            if not chat_link:
-                try: chat_link = await app.export_chat_invite_link(chat_id)
-                except: chat_link = f"https://t.me/{app.username}?startgroup=true"
-
-            markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔗 ɢʀᴏᴜᴘ ʟɪɴᴋ", url=chat_link)]])
-            text = (
-                f"<b>💡 ᴀᴜᴛᴏᴘʟᴀʏ ʟᴏɢɢᴇʀ</b>\n\n"
-                f"<b>🏠 ɢʀᴏᴜᴘ :</b> {chat_name} [<code>{chat_id}</code>]\n"
-                f"<b>⏮ ᴘʀᴇᴠɪᴏᴜs :</b> {prev_title}\n"
-                f"<b>⏭ ᴜᴘᴄᴏᴍɪɴɢ :</b> {next_title}"
-            )
-            await app.send_message(config.LOGGER_ID, text=text, reply_markup=markup, disable_web_page_preview=True)
-        except Exception as e:
-            LOGGER(__name__).warning(f"Autoplay Logger Error: {e}")
-
-    async def _enqueue_autoplay_track(self, chat_id: int, finished_track: dict) -> bool:
-        # PritiMusic/VivaanX dono ki imports check karni hogi
-        try:
-            from PritiMusic.utils.database import get_autoplay
-            if not finished_track or not await get_autoplay(chat_id): return False
-        except: return False
-
-        queued_file = str(finished_track.get("file") or "")
-        if queued_file.startswith("live_") or queued_file == "index_url": return False
-
-        last_vidid = str(finished_track.get("vidid") or "")
-        prev_title_log = finished_track.get("title", "Unknown Title")
-        if not last_vidid or last_vidid in {"telegram", "soundcloud"}:
-            raw_title = "latest hit trending songs"
-            last_vidid = "default_seed"
-        else:
-            raw_title = prev_title_log
-
-        title_lower = str(raw_title).lower()
-
-        lang_pools = {
-            "Hindi": ["hindi single track official video", "bollywood latest lyrical song", "latest hindi chill track"],
-            "Punjabi": ["latest punjabi single official video", "punjabi trending track lyrical", "punjabi pop blast"],
-            "Bhojpuri": ["bhojpuri latest single video song", "bhojpuri trending song official", "hit bhojpuri track"],
-            "Haryanvi": ["haryanvi single track official", "latest haryanvi video song", "haryanvi dj mix"],
-            "Tamil": ["tamil latest single official video", "kollywood trending song lyrical"],
-            "Telugu": ["telugu tollywood latest single song", "telugu lyrical video official"],
-            "English": ["english pop single official music video", "trending english lyrical song", "global top 50 pop hit"]
-        }
-        keywords_map = {
-            "Punjabi": ["punjabi", "jass", "sidhu", "karan", "diljit", "amrit", "ap dhillon"],
-            "Bhojpuri": ["bhojpuri", "khesari", "pawan", "shilpi", "antra"],
-            "Haryanvi": ["haryanvi", "sapna", "renuka", "gulzaar"],
-            "Tamil": ["tamil", "anirudh", "rahman", "kollywood"],
-            "Telugu": ["telugu", "allu", "ramarao", "tollywood", "dsp"],
-            "English": ["english", "pop song", "taylor swift", "justin bieber", "weekend"]
-        }
-        
-        detected_lang = "Hindi" 
-        for lang, kws in keywords_map.items():
-            if any(kw in title_lower for kw in kws):
-                detected_lang = lang
-                break
-
-        search_query = random.choice(lang_pools[detected_lang])
-        valid_choices = []
-
-        try:
-            from youtubesearchpython.__future__ import VideosSearch
-            search = VideosSearch(search_query, limit=15)
-            result = await search.next()
-            if result and result.get("result"):
-                for res in result["result"]:
-                    vidid = str(res.get("id") or "")
-                    if not vidid or vidid == "None" or vidid == last_vidid: continue
-                    
-                    next_dur = str(res.get("duration") or "0:00")
-                    dur_sec = 0
-                    if next_dur and ":" in next_dur:
-                        parts = next_dur.split(":")
-                        try:
-                            if len(parts) == 2: dur_sec = int(parts[0]) * 60 + int(parts[1])
-                            elif len(parts) == 3: dur_sec = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-                        except ValueError: pass
-                    
-                    if 30 <= dur_sec <= 900:
-                        valid_choices.append({
-                            "vidid": vidid,
-                            "title": str(res.get("title") or "Unknown Title").title(),
-                            "dur": next_dur,
-                            "seconds": dur_sec
-                        })
-        except Exception as e:
-            LOGGER(__name__).warning(f"Smart Search API failed: {e}")
-
-        if not valid_choices:
-            try:
-                import yt_dlp
-                loop_e = asyncio.get_event_loop()
-                ytdl_opts = {"quiet": True, "extract_flat": True}
-                ydl = yt_dlp.YoutubeDL(ytdl_opts)
-                r = await loop_e.run_in_executor(None, lambda: ydl.extract_info(f"ytsearch10:{search_query}", download=False))
-                
-                if r and "entries" in r:
-                    for entry in r["entries"]:
-                        vidid = entry.get("id")
-                        if not vidid or vidid == last_vidid: continue
-                        raw_dur = entry.get("duration", 0)
-                        try: dur_sec = int(float(raw_dur)) if raw_dur else 0
-                        except: dur_sec = 0
-                        if not dur_sec or dur_sec < 30 or dur_sec > 900: continue
-                        
-                        m, s = divmod(dur_sec, 60)
-                        h, m = divmod(m, 60)
-                        dur_str = f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
-                        
-                        valid_choices.append({
-                            "vidid": vidid,
-                            "title": str(entry.get("title", "Unknown Title")).title(),
-                            "dur": dur_str,
-                            "seconds": dur_sec
-                        })
-            except Exception as e:
-                 LOGGER(__name__).warning(f"yt-dlp fallback failed: {e}")
-
-        if valid_choices:
-            chosen = random.choice(valid_choices)
-            track_obj = {
-                "title": chosen["title"],
-                "dur": chosen["dur"],
-                "streamtype": finished_track.get("streamtype", "audio"),
-                "by": "Autoplay 🟢",
-                "user_id": 0,
-                "chat_id": finished_track.get("chat_id", chat_id),
-                "file": f"vid_{chosen['vidid']}",
-                "vidid": chosen["vidid"],
-                "seconds": chosen["seconds"],
-                "played": 0,
-            }
-            db.setdefault(chat_id, []).append(track_obj)
-            asyncio.create_task(self._log_autoplay(chat_id, prev_title_log, track_obj["title"]))
-            return True
-
-        seed_seconds = int(finished_track.get("seconds") or 0)
-        max_duration = min(max(seed_seconds * 3, 240), 900) if seed_seconds > 0 else 900
-
-        try:
-            recommendation = await YouTube.autoplay(last_vidid, raw_title, max_duration=max_duration)
-        except Exception as err:
-            LOGGER(__name__).warning("Autoplay lookup failed for chat %s on %s: %s", chat_id, last_vidid, err)
-            recommendation = None
-
-        if recommendation:
-            track_obj = {
-                "title": recommendation["title"].title(),
-                "dur": recommendation["duration_min"],
-                "streamtype": finished_track.get("streamtype", "audio"),
-                "by": "Autoplay 🟢",
-                "user_id": 0,
-                "chat_id": finished_track.get("chat_id", chat_id),
-                "file": f"vid_{recommendation['vidid']}",
-                "vidid": recommendation["vidid"],
-                "seconds": recommendation["duration_sec"],
-                "played": 0,
-            }
-            db.setdefault(chat_id, []).append(track_obj)
-            asyncio.create_task(self._log_autoplay(chat_id, prev_title_log, track_obj["title"]))
-            return True
-
-        LOGGER(__name__).warning(f"Autoplay Phase 1 & 2 failed for {chat_id}. Triggering Ultimate Fallback.")
-        try:
-            from youtubesearchpython.__future__ import VideosSearch
-            fallback_search = VideosSearch("NCS release popular tracks", limit=1)
-            result = await fallback_search.next()
-            if result and result.get("result"):
-                res = result["result"][0]
-                next_dur = str(res.get("duration", "3:00"))
-                dur_sec = 180
-                if ":" in next_dur:
-                    parts = next_dur.split(":")
-                    if len(parts) == 2: dur_sec = int(parts[0]) * 60 + int(parts[1])
-                    elif len(parts) == 3: dur_sec = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-
-                track_obj = {
-                    "title": str(res.get("title", "Fallback Track")).title(),
-                    "dur": next_dur,
-                    "streamtype": finished_track.get("streamtype", "audio"),
-                    "by": "Autoplay 🟢",
-                    "user_id": 0,
-                    "chat_id": finished_track.get("chat_id", chat_id),
-                    "file": f"vid_{res.get('id')}",
-                    "vidid": res.get("id"),
-                    "seconds": dur_sec,
-                    "played": 0,
-                }
-                db.setdefault(chat_id, []).append(track_obj)
-                asyncio.create_task(self._log_autoplay(chat_id, prev_title_log, track_obj["title"]))
-                return True
-        except Exception as e:
-            LOGGER(__name__).error(f"Ultimate fallback also failed: {e}")
-
-        return False
-
     async def play(self, client, chat_id: int) -> None:
         check = db.get(chat_id)
         popped = None
@@ -695,15 +488,12 @@ class Call:
                 await set_loop(chat_id, loop)
             await auto_clean(popped)
             if not check:
-                if await self._enqueue_autoplay_track(chat_id, popped):
-                    check = db.get(chat_id)
-                if not check:
-                    await _clear_(chat_id)
-                    if chat_id in self.active_calls:
-                        try: await client.leave_call(chat_id)
-                        except: pass
-                        finally: self.active_calls.discard(chat_id)
-                    return
+                await _clear_(chat_id)
+                if chat_id in self.active_calls:
+                    try: await client.leave_call(chat_id)
+                    except: pass
+                    finally: self.active_calls.discard(chat_id)
+                return
         except:
             try:
                 await _clear_(chat_id)
@@ -743,7 +533,6 @@ class Call:
 
                 button = stream_markup(_, chat_id)
                 try:
-                    # Removed schedule_stream_card to prevent errors if undefined, using app.send_photo
                     img = await get_thumb(videoid, requester_id, app) or get_random_img(config.PLAYLIST_IMG_URL)
                     run = await app.send_photo(
                         original_chat_id, photo=img,
@@ -763,7 +552,7 @@ class Call:
                     LOGGER(__name__).error(f"YouTube extraction failed: {download_err}")
 
                 if not file_path:
-                    try: await mystic.edit_text("❌ Sabhi streaming platforms par extraction fail ho gayi. Agla track play karein.")
+                    try: await mystic.edit_text("❌ Download failed. Skipping track...")
                     except: pass
                     return await self.play(client, chat_id)
 
@@ -844,24 +633,24 @@ class Call:
 
     async def ping(self) -> str:
         pings = []
-        if config.STRING1: pings.append(self.one.ping)
-        if config.STRING2: pings.append(self.two.ping)
-        if config.STRING3: pings.append(self.three.ping)
-        if config.STRING4: pings.append(self.four.ping)
-        if config.STRING5: pings.append(self.five.ping)
+        if getattr(config, "STRING1", None): pings.append(self.one.ping)
+        if getattr(config, "STRING2", None): pings.append(self.two.ping)
+        if getattr(config, "STRING3", None): pings.append(self.three.ping)
+        if getattr(config, "STRING4", None): pings.append(self.four.ping)
+        if getattr(config, "STRING5", None): pings.append(self.five.ping)
         return str(round(sum(pings) / len(pings), 3)) if pings else "0.0"
 
     async def start(self) -> None:
         LOGGER(__name__).info("Starting PyTgCalls Clients...")
-        if config.STRING1: await self.one.start()
-        if config.STRING2: await self.two.start()
-        if config.STRING3: await self.three.start()
-        if config.STRING4: await self.four.start()
-        if config.STRING5: await self.five.start()
+        if getattr(config, "STRING1", None): await self.one.start()
+        if getattr(config, "STRING2", None): await self.two.start()
+        if getattr(config, "STRING3", None): await self.three.start()
+        if getattr(config, "STRING4", None): await self.four.start()
+        if getattr(config, "STRING5", None): await self.five.start()
 
     async def decorators(self) -> None:
         assistants = list(filter(None, [self.one, self.two, self.three, self.four, self.five]))
-        raw_clients = list(filter(None, [app, self.userbot1, self.userbot2, self.userbot3, self.userbot4, self.userbot5]))
+        raw_clients = list(filter(None, [app, getattr(self, "userbot1", None), getattr(self, "userbot2", None), getattr(self, "userbot3", None), getattr(self, "userbot4", None), getattr(self, "userbot5", None)]))
 
         CRITICAL = (
             ChatUpdate.Status.KICKED
