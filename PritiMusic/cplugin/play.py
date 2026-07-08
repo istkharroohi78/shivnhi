@@ -1,7 +1,8 @@
+import os
 import uuid
 import asyncio
 import random
-from time import time
+import time
 from datetime import datetime
 from typing import Union
 import re
@@ -77,6 +78,42 @@ from config import BANNED_USERS, lyrical
 MSG_DOWNLOADING = "➛ 𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐅𝐫𝐨𝐦 𝐁𝐞𝐭𝐚 𝐇𝐮𝐛 𝐁𝐚𝐛𝐲 𝐩𝐥𝐞𝐚𝐬𝐞 𝐰𝐚𝐢𝐭😁...."
 MSG_STARTING = "➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲❤️...."
 
+# =======================================================
+# 🚀 STYLISH LIVE PROGRESS BAR
+# =======================================================
+EDIT_TIME = {}
+
+async def stylish_progress_bar(current, total, msg, start_time):
+    if total == 0:
+        return
+        
+    now = time.time()
+    if msg.id in EDIT_TIME:
+        if now - EDIT_TIME[msg.id] < 2.0:
+            return
+    EDIT_TIME[msg.id] = now
+
+    percentage = current * 100 / total
+    downloaded = round(current / (1024 * 1024), 2)
+    total_size = round(total / (1024 * 1024), 2)
+    speed = round(downloaded / (now - start_time), 2) if (now - start_time) > 0 else 0
+    eta = round((total - current) / (speed * 1024 * 1024)) if speed > 0 else 0
+
+    filled = int(percentage / 10)
+    empty = 10 - filled
+    bar = "▰" * filled + "▱" * empty
+
+    text = f"**{MSG_DOWNLOADING}**\n\n"
+    text += f"**⚡ 𝐏𝐫𝐨𝐠𝐫𝐞𝐬𝐬:** `[{bar}] {round(percentage, 2)}%`\n"
+    text += f"**📥 𝐒𝐢𝐳𝐞:** `{downloaded} MB / {total_size} MB`\n"
+    text += f"**🚀 𝐒𝐩𝐞𝐞𝐝:** `{speed} MB/s`\n"
+    text += f"**⏳ 𝐄𝐓𝐀:** `{eta} sec`\n"
+
+    try:
+        await msg.edit_text(text)
+    except Exception:
+        pass
+
 
 user_last_message_time = {}
 user_command_count = {}
@@ -113,21 +150,17 @@ def is_malicious_link(text):
     if not text:
         return False
     
-    # ✅ FIX: Decode the URL fully so attackers can't hide ; and $ using %3B and %24
     decoded_text = urllib.parse.unquote(str(text)).lower()
     clean_text = clean_invisible_chars(decoded_text)
     
-    # Block shell execution metacharacters
     suspicious_chars = re.compile(r'[;|&$`{}<>\\]')
     if suspicious_chars.search(clean_text):
         return True
 
-    # Block local IPs and malicious domains
     if re.search(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', clean_text): return True
     bad_extensions = ["webhook", "ngrok", "localhost", "0.0.0.0", ".sh", ".txt", "payload", ".exe", ".bat", ".vbs", ".cmd", ".py", ".php"]
     if any(ext in clean_text for ext in bad_extensions): return True
     
-    # Block specific Linux commands
     dangerous_chars = ["rm -rf", "wget ", "curl ", "chmod ", "bash -c", "eval(", "tar ", "cp ", "/proc/self", "ifs", "env.txt"]
     if any(char in clean_text for char in dangerous_chars): return True
     
@@ -136,7 +169,6 @@ def is_malicious_link(text):
 def bouncer_check(_, __, message: Message):
     if not message.text: return True
     
-    # ✅ FIX: Decode message text for command injection protection
     decoded_text = urllib.parse.unquote(message.text).lower()
     clean_text = clean_invisible_chars(decoded_text)
     
@@ -150,7 +182,6 @@ def bouncer_check(_, __, message: Message):
 
 god_mode_filter = filters.create(bouncer_check)
 # =======================================================
-
 
 async def send_security_log(message: Message, breach_type: str, payload: str):
     try:
@@ -202,11 +233,11 @@ async def update_clone_activity(username):
         [
             "play", "vplay", "cplay", "cvplay", "playforce", "vplayforce", "cplayforce", "cvplayforce"
         ],
-        prefixes=["/", "!", "%", ".", "@", "#"], # ✅ FIXED: Khaali string "" yahan se hata di gayi hai
+        prefixes=["/", "!", "%", ".", "@", "#"], 
     )
     & filters.group
     & ~BANNED_USERS
-    & god_mode_filter # ✅ Added Bouncer Check Here
+    & god_mode_filter 
 )
 @CPlayWrapper
 async def play_commnd(client, message: Message, _, chat_id, video, channel, playmode, url, fplay):
@@ -277,7 +308,7 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
         C_LOGGER_ID = C_BOT_OWNER_ID
     clone_logger_id = C_LOGGER_ID
 
-    current_time = time()
+    current_time = time.time()
     last_message_time = user_last_message_time.get(user_id, 0)
     if current_time - last_message_time < SPAM_WINDOW_SECONDS:
         user_last_message_time[user_id] = current_time
@@ -315,16 +346,41 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
     audio_telegram = ((message.reply_to_message.audio or message.reply_to_message.voice) if message.reply_to_message else None)
     video_telegram = ((message.reply_to_message.video or message.reply_to_message.document) if message.reply_to_message else None)
     
+    # ===========================================================
+    # 🎵 AUDIO LOCAL PLAY HANDLER (UP TO 4GB)
+    # ===========================================================
     if audio_telegram:
-        if audio_telegram.file_size > 104857600:
-            return await mystic.edit_text(_["play_5"])
-        duration_min = seconds_to_min(audio_telegram.duration)
-        if (audio_telegram.duration) > config.DURATION_LIMIT:
-            return await mystic.edit_text(_["play_6"].format(config.DURATION_LIMIT_MIN, cuser.mention))
-        file_path = await Telegram.get_filepath(audio=audio_telegram)
-        if await Telegram.download(_, message, mystic, file_path):
+        if audio_telegram.file_size > 4294967296: # 4GB Limit
+            return await mystic.edit_text("❌ **File is too large! Maximum allowed limit is 4GB.**")
+            
+        duration_min = seconds_to_min(audio_telegram.duration) if hasattr(audio_telegram, 'duration') and audio_telegram.duration else "Unknown"
+        
+        dl_client = client
+        msg_to_dl = message.reply_to_message
+        
+        if audio_telegram.file_size > 20971520: # 20 MB limit switch
+            if not userbot:
+                return await mystic.edit_text("❌ **Assistant Required!**\nTo play files larger than 20MB, the assistant account must be active.")
+            dl_client = userbot
+            try:
+                msg_to_dl = await userbot.get_messages(message.chat.id, message.reply_to_message.id)
+            except Exception as e:
+                return await mystic.edit_text(f"❌ **Assistant Access Error:** `{e}`")
+
+        try:
+            start_time = time.time()
+            file_path = await dl_client.download_media(
+                msg_to_dl,
+                file_name="downloads/",
+                progress=stylish_progress_bar,
+                progress_args=(mystic, start_time)
+            )
+        except Exception as e:
+            return await mystic.edit_text(f"❌ **Download Error:** `{e}`")
+
+        if file_path and os.path.exists(file_path) and os.path.getsize(file_path) > 0:
             message_link = await Telegram.get_link(message)
-            file_name = await Telegram.get_filename(audio_telegram, audio=True)
+            file_name = audio_telegram.file_name if hasattr(audio_telegram, 'file_name') else "Audio File"
             dur = await Telegram.get_duration(audio_telegram, file_path)
             details = {"title": file_name, "link": message_link, "path": file_path, "dur": dur}
             
@@ -332,7 +388,6 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
                 await send_security_log(message, "ɴsғᴡ ᴠɪᴏʟᴀᴛɪᴏɴ (Telegram Audio)", details.get("title", ""))
                 return await mystic.edit_text("**🚫 sᴇᴄᴜʀɪᴛʏ ᴀʟᴇʀᴛ: ᴀᴅᴜʟᴛ ᴄᴏɴᴛᴇɴᴛ ɪs sᴛʀɪᴄᴛʟʏ ᴘʀᴏʜɪʙɪᴛᴇᴅ!**")
 
-            # 🌟 NEW: Starting Stream Message
             try:
                 if getattr(mystic, "text", None):
                     await mystic.edit_text(MSG_STARTING)
@@ -344,14 +399,18 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
             except Exception as e:
                 print(e)
                 try:
-                    return await mystic.edit_text("❌ ᴇʀʀᴏʀ ᴘʀᴏᴄᴇssɪɴɢ ᴛᴇʟᴇɢʀᴀᴍ ᴀᴜᴅɪᴏ.")
+                    return await mystic.edit_text(f"❌ **sᴛʀᴇᴀᴍ ᴇʀʀᴏʀ (ᴀᴜᴅɪᴏ):**\n\n`{str(e)}`")
                 except MessageIdInvalid:
-                    return await message.reply_text("❌ ᴇʀʀᴏʀ ᴘʀᴏᴄᴇssɪɴɢ ᴛᴇʟᴇɢʀᴀᴍ ᴀᴜᴅɪᴏ.")
+                    return await message.reply_text(f"❌ **sᴛʀᴇᴀᴍ ᴇʀʀᴏʀ:** `{str(e)}`")
                 except MessageNotModified:
                     return
             return await mystic.delete()
-        return
+        else:
+            return await mystic.edit_text("❌ **Download Failed:** The file is empty or corrupted.")
 
+    # ===========================================================
+    # 🎥 VIDEO LOCAL PLAY HANDLER (UP TO 4GB)
+    # ===========================================================
     elif video_telegram:
         if message.reply_to_message.document:
             try:
@@ -359,13 +418,37 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
                 if ext.lower() not in formats:
                     return await mystic.edit_text(_["play_7"].format(f"{' | '.join(formats)}"))
             except:
-                return await mystic.edit_text(_["play_7"].format(f"{' | '.join(formats)}"))
-        if video_telegram.file_size > config.TG_VIDEO_FILESIZE_LIMIT:
-            return await mystic.edit_text(_["play_8"])
-        file_path = await Telegram.get_filepath(video=video_telegram)
-        if await Telegram.download(_, message, mystic, file_path):
+                pass
+                
+        if video_telegram.file_size > 4294967296: # 4GB Limit
+            return await mystic.edit_text("❌ **File is too large! Maximum allowed limit is 4GB.**")
+            
+        dl_client = client
+        msg_to_dl = message.reply_to_message
+        
+        if video_telegram.file_size > 20971520: # 20 MB limit switch
+            if not userbot:
+                return await mystic.edit_text("❌ **Assistant Required!**\nTo play files larger than 20MB, the assistant account must be active.")
+            dl_client = userbot
+            try:
+                msg_to_dl = await userbot.get_messages(message.chat.id, message.reply_to_message.id)
+            except Exception as e:
+                return await mystic.edit_text(f"❌ **Assistant Access Error:** `{e}`")
+
+        try:
+            start_time = time.time()
+            file_path = await dl_client.download_media(
+                msg_to_dl,
+                file_name="downloads/",
+                progress=stylish_progress_bar,
+                progress_args=(mystic, start_time)
+            )
+        except Exception as e:
+            return await mystic.edit_text(f"❌ **Download Error:** `{e}`")
+
+        if file_path and os.path.exists(file_path) and os.path.getsize(file_path) > 0:
             message_link = await Telegram.get_link(message)
-            file_name = await Telegram.get_filename(video_telegram)
+            file_name = video_telegram.file_name if hasattr(video_telegram, 'file_name') else "Video File"
             dur = await Telegram.get_duration(video_telegram, file_path)
             details = {"title": file_name, "link": message_link, "path": file_path, "dur": dur}
             
@@ -373,7 +456,6 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
                 await send_security_log(message, "ɴsғᴡ ᴠɪᴏʟᴀᴛɪᴏɴ (Telegram Video)", details.get("title", ""))
                 return await mystic.edit_text("**🚫 sᴇᴄᴜʀɪᴛʏ ᴀʟᴇʀᴛ: ᴀᴅᴜʟᴛ ᴄᴏɴᴛᴇɴᴛ ɪs sᴛʀɪᴄᴛʟʏ ᴘʀᴏʜɪʙɪᴛᴇᴅ!**")
 
-            # 🌟 NEW: Starting Stream Message
             try:
                 if getattr(mystic, "text", None):
                     await mystic.edit_text(MSG_STARTING)
@@ -385,14 +467,18 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
             except Exception as e:
                 print(e)
                 try:
-                    return await mystic.edit_text("❌ ᴇʀʀᴏʀ ᴘʀᴏᴄᴇssɪɴɢ ᴛᴇʟᴇɢʀᴀᴍ ᴠɪᴅᴇᴏ.")
+                    return await mystic.edit_text(f"❌ **sᴛʀᴇᴀᴍ ᴇʀʀᴏʀ (ᴠɪᴅᴇᴏ):**\n\n`{str(e)}`")
                 except MessageIdInvalid:
-                    return await message.reply_text("❌ ᴇʀʀᴏʀ ᴘʀᴏᴄᴇssɪɴɢ ᴛᴇʟᴇɢʀᴀᴍ ᴠɪᴅᴇᴏ.")
+                    return await message.reply_text(f"❌ **sᴛʀᴇᴀᴍ ᴇʀʀᴏʀ:** `{str(e)}`")
                 except MessageNotModified:
                     return
             return await mystic.delete()
-        return
+        else:
+            return await mystic.edit_text("❌ **Download Failed!** The file is empty.\n\n_Note: Ensure the Assistant account is a Premium account if downloading files up to 4GB._")
     
+    # ===========================================================
+    # 🌐 URL HANDLER
+    # ===========================================================
     elif url:
         if not url.startswith(("http://", "https://")):
              return await mystic.edit_text("❌ **sᴇᴄᴜʀɪᴛʏ ᴇʀʀᴏʀ:** ʟᴏᴄᴀʟ ғɪʟᴇs ᴀʀᴇ ɴᴏᴛ ᴀʟʟᴏᴡᴇᴅ ᴛᴏ ᴘʀᴇᴠᴇɴᴛ ᴅᴀᴛᴀ ᴛʜᴇғᴛ.")
@@ -506,7 +592,6 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
                 if duration_sec > config.DURATION_LIMIT:
                     return await mystic.edit_text(_["play_6"].format(config.DURATION_LIMIT_MIN, cuser.mention))
                 
-                # 🌟 NEW: Starting Stream Message
                 try:
                     if getattr(mystic, "text", None):
                         await mystic.edit_text(MSG_STARTING)
@@ -553,7 +638,6 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
                 try:
                     await Lucky.stream_call(url)
                     
-                    # 🌟 NEW: Starting Stream Message
                     try:
                         if getattr(mystic, "text", None):
                             await mystic.edit_text(MSG_STARTING)
@@ -625,7 +709,6 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
                 buttons = livestream_markup(_, track_id, user_id, "v" if video else "a", "c" if channel else "g", "f" if fplay else "d")
                 return await mystic.edit_text(_["play_13"], reply_markup=InlineKeyboardMarkup(buttons))
         
-        # 🌟 NEW: Starting Stream Message
         try:
             if getattr(mystic, "text", None):
                 await mystic.edit_text(MSG_STARTING)
@@ -656,7 +739,6 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
             lyrical[ran_hash] = plist_id
             buttons = playlist_markup(_, ran_hash, message.from_user.id, plist_type, "c" if channel else "g", "f" if fplay else "d")
             
-            # 🌟 NEW: Starting Stream Message
             try:
                 if getattr(mystic, "text", None):
                     await mystic.edit_text(MSG_STARTING)
@@ -674,7 +756,6 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
             if slider:
                 buttons = slider_markup(_, track_id, message.from_user.id, query, 0, "c" if channel else "g", "f" if fplay else "d")
                 
-                # 🌟 NEW: Starting Stream Message
                 try:
                     if getattr(mystic, "text", None):
                         await mystic.edit_text(MSG_STARTING)
@@ -691,7 +772,6 @@ async def play_commnd(client, message: Message, _, chat_id, video, channel, play
             else:
                 buttons = track_markup(_, track_id, message.from_user.id, "c" if channel else "g", "f" if fplay else "d")
                 
-                # 🌟 NEW: Starting Stream Message
                 try:
                     if getattr(mystic, "text", None):
                         await mystic.edit_text(MSG_STARTING)
@@ -788,7 +868,6 @@ async def play_music(client: Client, CallbackQuery, _):
     video = True if mode == "v" else None
     ffplay = True if fplay == "f" else None
     
-    # 🌟 NEW: Starting Stream Message
     try:
         await mystic.edit_text(MSG_STARTING)
         await asyncio.sleep(0.5)
@@ -799,9 +878,9 @@ async def play_music(client: Client, CallbackQuery, _):
     except Exception as e:
         print(e)
         try:
-            return await mystic.edit_text("❌ ᴇʀʀᴏʀ ᴘʟᴀʏɪɴɢ sᴛʀᴇᴀᴍ.")
+            return await mystic.edit_text(f"❌ **sᴛʀᴇᴀᴍ ᴇʀʀᴏʀ:** `{str(e)}`")
         except MessageIdInvalid:
-            return await CallbackQuery.message.reply_text("❌ ᴇʀʀᴏʀ ᴘʟᴀʏɪɴɢ sᴛʀᴇᴀᴍ.")
+            return await CallbackQuery.message.reply_text(f"❌ **sᴛʀᴇᴀᴍ ᴇʀʀᴏʀ:** `{str(e)}`")
         except MessageNotModified:
             return
     return await mystic.delete()
@@ -907,7 +986,6 @@ async def play_playlists_command(client: Client, CallbackQuery, _):
         except:
             return await mystic.edit_text("❌ ᴇʀʀᴏʀ ғᴇᴛᴄʜɪɴɢ ᴀᴘᴘʟᴇ ᴘʟᴀʏʟɪsᴛ.")
             
-    # 🌟 NEW: Starting Stream Message
     try:
         await mystic.edit_text(MSG_STARTING)
         await asyncio.sleep(0.5)
@@ -918,9 +996,9 @@ async def play_playlists_command(client: Client, CallbackQuery, _):
     except Exception as e:
         print(e)
         try:
-            return await mystic.edit_text("❌ ᴇʀʀᴏʀ ᴘʟᴀʏɪɴɢ ᴘʟᴀʏʟɪsᴛ.")
+            return await mystic.edit_text(f"❌ **sᴛʀᴇᴀᴍ ᴇʀʀᴏʀ:** `{str(e)}`")
         except MessageIdInvalid:
-            return await CallbackQuery.message.reply_text("❌ ᴇʀʀᴏʀ ᴘʟᴀʏɪɴɢ ᴘʟᴀʏʟɪsᴛ.")
+            return await CallbackQuery.message.reply_text(f"❌ **sᴛʀᴇᴀᴍ ᴇʀʀᴏʀ:** `{str(e)}`")
         except MessageNotModified:
             return
     return await mystic.delete()
@@ -1038,7 +1116,6 @@ async def stream(client, _, mystic, user_id, result, chat_id, user_name, origina
                 except:
                     continue
                 
-                # ✅ FIX 1: Prevent crash if playlist file_path is None
                 if not file_path or str(file_path) == "None":
                     continue
                 
@@ -1081,9 +1158,8 @@ async def stream(client, _, mystic, user_id, result, chat_id, user_name, origina
         except:
             return await mystic.edit_text("❌ ᴇʀʀᴏʀ ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ ᴠɪᴅᴇᴏ.")
         
-        # ✅ FIX 2: Prevent crash if YouTube file_path is None
         if not file_path or str(file_path) == "None":
-            return await mystic.edit_text("❌ ᴇʀʀᴏʀ: ʏᴛ-ᴅʟᴘ ғᴀɪʟᴇᴅ ᴛᴏ ᴇxᴛʀᴀᴄᴛ ᴀᴜᴅɪᴏ.")
+            return await mystic.edit_text("❌ **Error:** Download failed (yt-dlp could not extract media).")
 
         if await is_active_chat(chat_id):
             await put_queue(chat_id, original_chat_id, file_path if direct else f"vid_{vidid}", title, duration_min, user_name, vidid, user_id, "video" if video else "audio")
@@ -1183,7 +1259,6 @@ async def stream(client, _, mystic, user_id, result, chat_id, user_name, origina
                 db[chat_id] = []
             n, file_path = await YouTube.video(link)
             
-            # ✅ FIX 3: Prevent crash if Live stream file_path is None
             if n == 0 or not file_path or str(file_path) == "None":
                 raise AssistantErr(_["str_3"])
             
