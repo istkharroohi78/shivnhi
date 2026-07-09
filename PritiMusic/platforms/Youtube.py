@@ -15,12 +15,17 @@ from youtubesearchpython.__future__ import VideosSearch, Playlist
 DOWNLOAD_DIR = "downloads"
 LOGGER = logging.getLogger(__name__)
 
-API_URL = os.environ.get("SHRUTI_API_URL", "https://api.shrutibots.site")
-API_KEY = os.environ.get("SHRUTI_API_KEY", "ShrutiBotsC0WH1GowF2HkGoKv4F3y")
+# Apixhub API (Primary)
+APIXHUB_API_URL = os.getenv("APIXHUB_API_URL", "https://bot.apixhub.fun")
+APIXHUB_API_KEY = os.getenv("APIXHUB_API_KEY", "OijUY78533DPoPnOkwIK7qImQk")
 
-# Worker API (Now Primary)
+# Worker API (Secondary)
 WORKER_FALLBACK_API_URL = os.getenv("WORKER_FALLBACK_API_URL", "https://youtubenewapi.skybotsdeveloper.workers.dev")
 WORKER_FALLBACK_API_KEY = os.getenv("WORKER_FALLBACK_API_KEY", "itsmesid")
+
+# Shruti API (Tertiary)
+API_URL = os.environ.get("SHRUTI_API_URL", "https://api.shrutibots.site")
+API_KEY = os.environ.get("SHRUTI_API_KEY", "ShrutiBotsC0WH1GowF2HkGoKv4F3y")
 
 def time_to_seconds(time_str):
     stringt = str(time_str)
@@ -49,43 +54,41 @@ async def _async_run(func, *args, **kwargs):
 
 # ----------------- DOWNLOADERS -----------------
 
-async def api_download(video_id: str, download_type: str, title: str = None) -> str:
-    if not API_URL or not API_KEY:
+# 1. Apixhub Downloader (NEW PRIMARY)
+async def apixhub_download(video_id: str, download_type: str, title: str = None) -> str:
+    if not APIXHUB_API_URL or not APIXHUB_API_KEY:
         return None
 
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    filename = get_safe_filename(title, video_id)
+    filename = get_safe_filename(title, f"apix_{video_id}")
     ext = "mp4" if download_type == "video" else "mp3"
     file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{ext}")
 
-    # 🟢 FIX: Check size > 50000 bytes (50KB) to ignore fake HTML error files
     if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
         return file_path
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{API_URL}/download",
-                params={"url": video_id, "type": "audio" if download_type == "audio" else "video", "api_key": API_KEY},
-                timeout=aiohttp.ClientTimeout(total=600)
-            ) as resp:
+            endpoint = "streamvideo" if download_type == "video" else "streamaudio"
+            url = f"{APIXHUB_API_URL}/{endpoint}/{video_id}?key={APIXHUB_API_KEY}"
+            
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=600)) as resp:
                 if resp.status != 200:
-                    LOGGER.error(f"API Error: Status {resp.status}")
+                    LOGGER.error(f"Apixhub API Error: Status {resp.status}")
                     return None
                 
                 with open(file_path, "wb") as f:
                     async for chunk in resp.content.iter_chunked(131072):
                         f.write(chunk)
                         
-        # 🟢 FIX: Again check size to confirm real media file
         if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
-            LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{title}' from Shruti API!")
+            LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{title}' from Apixhub API!")
             return file_path
         else:
-            LOGGER.warning(f"🔴 Shruti API returned corrupted/empty file for '{title}'. Rejecting it.")
+            LOGGER.warning(f"🔴 Apixhub API returned corrupted/empty file for '{title}'. Rejecting it.")
             return None
     except Exception as e:
-        LOGGER.error(f"Shruti API Download Error: {e}")
+        LOGGER.error(f"Apixhub API Download Error: {e}")
         if os.path.exists(file_path):
             try: os.remove(file_path)
             except: pass
@@ -101,7 +104,6 @@ async def worker_api_download(video_id: str, download_type: str, title: str = No
     ext = "mp4" if download_type == "video" else "mp3"
     file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{ext}")
 
-    # 🟢 FIX: Size check > 50000 (50KB)
     if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
         return file_path
 
@@ -125,7 +127,6 @@ async def worker_api_download(video_id: str, download_type: str, title: str = No
                     async for chunk in resp.content.iter_chunked(131072):
                         f.write(chunk)
                         
-        # 🟢 FIX: Size check > 50000 (50KB)
         if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
             return file_path
         else:
@@ -133,6 +134,47 @@ async def worker_api_download(video_id: str, download_type: str, title: str = No
             return None
     except Exception as e:
         LOGGER.error(f"Worker API Download Error: {e}")
+        if os.path.exists(file_path):
+            try: os.remove(file_path)
+            except: pass
+        return None
+
+# Shruti Downloader
+async def api_download(video_id: str, download_type: str, title: str = None) -> str:
+    if not API_URL or not API_KEY:
+        return None
+
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    filename = get_safe_filename(title, video_id)
+    ext = "mp4" if download_type == "video" else "mp3"
+    file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{ext}")
+
+    if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
+        return file_path
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{API_URL}/download",
+                params={"url": video_id, "type": "audio" if download_type == "audio" else "video", "api_key": API_KEY},
+                timeout=aiohttp.ClientTimeout(total=600)
+            ) as resp:
+                if resp.status != 200:
+                    LOGGER.error(f"Shruti API Error: Status {resp.status}")
+                    return None
+                
+                with open(file_path, "wb") as f:
+                    async for chunk in resp.content.iter_chunked(131072):
+                        f.write(chunk)
+                        
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
+            LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{title}' from Shruti API!")
+            return file_path
+        else:
+            LOGGER.warning(f"🔴 Shruti API returned corrupted/empty file for '{title}'. Rejecting it.")
+            return None
+    except Exception as e:
+        LOGGER.error(f"Shruti API Download Error: {e}")
         if os.path.exists(file_path):
             try: os.remove(file_path)
             except: pass
@@ -283,35 +325,41 @@ async def download_song(link: str, title: str = None) -> str:
         except Exception:
             pass
 
-    # 1. Primary API (Worker)
+    # 1. Primary API (Apixhub)
+    apixhub_result = await apixhub_download(video_id, "audio", title)
+    if apixhub_result: return apixhub_result
+    
+    LOGGER.warning(f"🔴 Apixhub API failed for '{title}'. Hopping to Worker API...")
+
+    # 2. Secondary API (Worker)
     worker_result = await worker_api_download(video_id, "audio", title)
     if worker_result: return worker_result
 
     LOGGER.warning(f"🔴 Worker API failed for '{title}'. Hopping to Shruti API...")
 
-    # 2. Shruti API Fallback
+    # 3. Shruti API Fallback
     api_result = await api_download(video_id, "audio", title)
     if api_result: return api_result
     
     LOGGER.warning(f"🔴 Shruti API failed for '{title}'. Hopping to yt-dlp...")
 
-    # 3. yt-dlp Fallback
+    # 4. yt-dlp Fallback
     yt_result = await ytdl_fallback_download(link, "audio", title)
     if yt_result: return yt_result
     
     if title:
         LOGGER.warning(f"🔴 YouTube blocked '{title}'. Hopping to Spotify...")
-        # 4. Spotify Fallback
+        # 5. Spotify Fallback
         sp_result = await spotify_fallback_download(title)
         if sp_result: return sp_result
 
         LOGGER.warning(f"🔴 Spotify failed. Hopping to JioSaavn...")
-        # 5. JioSaavn Fallback
+        # 6. JioSaavn Fallback
         js_result = await jiosaavn_fallback_download(title)
         if js_result: return js_result
 
         LOGGER.warning(f"🔴 JioSaavn failed. Hopping to SoundCloud...")
-        # 6. SoundCloud Fallback
+        # 7. SoundCloud Fallback
         sc_result = await soundcloud_fallback_download(title)
         if sc_result: return sc_result
 
@@ -331,19 +379,25 @@ async def download_video(link: str, title: str = None) -> str:
         except:
             pass
 
-    # 1. Primary API (Worker)
+    # 1. Primary API (Apixhub)
+    apixhub_result = await apixhub_download(video_id, "video", title)
+    if apixhub_result: return apixhub_result
+
+    LOGGER.warning(f"🔴 Apixhub API failed for '{title}'. Hopping to Worker API...")
+
+    # 2. Secondary API (Worker)
     worker_result = await worker_api_download(video_id, "video", title)
     if worker_result: return worker_result
 
     LOGGER.warning(f"🔴 Worker API failed for '{title}'. Hopping to Shruti API...")
 
-    # 2. Shruti API Fallback
+    # 3. Shruti API Fallback
     api_result = await api_download(video_id, "video", title)
     if api_result: return api_result
     
     LOGGER.warning(f"🔴 Shruti API failed for '{title}'. Hopping to yt-dlp...")
 
-    # 3. yt-dlp Fallback
+    # 4. yt-dlp Fallback
     return await ytdl_fallback_download(link, "video", title)
 
 
