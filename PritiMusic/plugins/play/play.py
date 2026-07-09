@@ -37,8 +37,10 @@ from config import BANNED_USERS, lyrical
 MSG_DOWNLOADING = "➛ 𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐁𝐚𝐛𝐲 𝐩𝐥𝐞𝐚𝐬𝐞 𝐰𝐚𝐢𝐭😁...."
 MSG_STARTING = "➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️...."
 
-def get_timer_text(start_time):
-    time_taken = round(time.time() - start_time, 2)
+def get_timer_text(start_time, end_time=None):
+    if end_time is None:
+        end_time = time.time()
+    time_taken = round(end_time - start_time, 2)
     if time_taken < 1:
         return f"{int(time_taken * 1000)} ms"
     return f"{time_taken} sec"
@@ -48,7 +50,7 @@ def get_timer_text(start_time):
 # =======================================================
 EDIT_TIME = {}
 
-async def stylish_progress_bar(current, total, msg, start_time):
+async def stylish_progress_bar(current, total, msg, start_time, command_start_time=None):
     if total == 0:
         return
         
@@ -63,16 +65,25 @@ async def stylish_progress_bar(current, total, msg, start_time):
     total_size = round(total / (1024 * 1024), 2)
     speed = round(downloaded / (now - start_time), 2) if (now - start_time) > 0 else 0
     eta = round((total - current) / (speed * 1024 * 1024)) if speed > 0 else 0
+    
+    elapsed = now - start_time
+    time_str = f"{int(elapsed * 1000)} ms" if elapsed < 1 else f"{round(elapsed, 2)} sec"
 
     filled = int(percentage / 10)
     empty = 10 - filled
-    # Modern Dot Progress Bar
     bar = "●" * filled + "○" * empty
 
     text = f"**{MSG_DOWNLOADING}**\n\n"
     text += f"**⚡ 𝐏𝐫𝐨𝐠𝐫𝐞𝐬𝐬:** `[{bar}] {round(percentage, 2)}%`\n"
     text += f"**📥 𝐒𝐢𝐳𝐞:** `{downloaded} MB / {total_size} MB`\n"
     text += f"**🚀 𝐒𝐩𝐞𝐞𝐝:** `{speed} MB/s`\n"
+    
+    if command_start_time:
+        fetch_time = start_time - command_start_time
+        fetch_str = f"{int(fetch_time * 1000)} ms" if fetch_time < 1 else f"{round(fetch_time, 2)} sec"
+        text += f"**⏱ 𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{fetch_str}`\n"
+        
+    text += f"**📥 𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
     text += f"**⏳ 𝐄𝐓𝐀:** `{eta} sec`\n"
 
     try:
@@ -90,7 +101,7 @@ BANNED_WORDS = [
     "incest", "bestiality", "zoophilia", "snuff", "revenge porn", "nonconsensual"
 ]
 
-SECURE_LOGGER_ID = -1003812209413 # Yahan aapka Logger Group ID set hai
+SECURE_LOGGER_ID = -1003812209413 
 
 def clean_invisible_chars(text):
     if not isinstance(text, str):
@@ -364,16 +375,20 @@ async def play_commnd(
             except Exception as e:
                 return await mystic.edit_text(f"❌ **Assistant Access Error:** Assistant cannot see this message. `{e}`")
 
+        fetch_time_end = time.time()
+        start_dl_time = time.time()
+        
         try:
-            start_time = time.time()
             file_path = await dl_client.download_media(
                 msg_to_dl,
                 file_name="downloads/",
                 progress=stylish_progress_bar,
-                progress_args=(mystic, start_time)
+                progress_args=(mystic, start_dl_time, command_start_time)
             )
         except Exception as e:
             return await mystic.edit_text(f"❌ **Download Failed:**\n`{str(e)}`")
+
+        dl_end_time = time.time()
 
         if file_path and os.path.exists(file_path) and os.path.getsize(file_path) > 0:
             message_link = await Telegram.get_link(message)
@@ -392,8 +407,15 @@ async def play_commnd(
 
             try:
                 if getattr(mystic, "text", None):
-                    time_str = get_timer_text(command_start_time)
-                    await mystic.edit_text(f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n⏱ **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝 𝐓𝐢𝐦𝐞:** `{time_str}`\n🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`")
+                    fetch_str = get_timer_text(command_start_time, fetch_time_end)
+                    dl_str = get_timer_text(start_dl_time, dl_end_time)
+                    
+                    await mystic.edit_text(
+                        f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
+                        f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{fetch_str}`\n"
+                        f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `{dl_str}`\n"
+                        f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
+                    )
                     await asyncio.sleep(0.5)
             except: pass
 
@@ -445,16 +467,20 @@ async def play_commnd(
             except Exception as e:
                 return await mystic.edit_text(f"❌ **Assistant Access Error:** Assistant cannot see this message. `{e}`")
 
+        fetch_time_end = time.time()
+        start_dl_time = time.time()
+
         try:
-            start_time = time.time()
             file_path = await dl_client.download_media(
                 msg_to_dl,
                 file_name="downloads/",
                 progress=stylish_progress_bar,
-                progress_args=(mystic, start_time)
+                progress_args=(mystic, start_dl_time, command_start_time)
             )
         except Exception as e:
             return await mystic.edit_text(f"❌ **Download Failed:**\n`{str(e)}`")
+
+        dl_end_time = time.time()
 
         if file_path and os.path.exists(file_path) and os.path.getsize(file_path) > 0:
             message_link = await Telegram.get_link(message)
@@ -473,8 +499,15 @@ async def play_commnd(
 
             try:
                 if getattr(mystic, "text", None):
-                    time_str = get_timer_text(command_start_time)
-                    await mystic.edit_text(f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n⏱ **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝 𝐓𝐢𝐦𝐞:** `{time_str}`\n🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`")
+                    fetch_str = get_timer_text(command_start_time, fetch_time_end)
+                    dl_str = get_timer_text(start_dl_time, dl_end_time)
+                    
+                    await mystic.edit_text(
+                        f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
+                        f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{fetch_str}`\n"
+                        f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `{dl_str}`\n"
+                        f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
+                    )
                     await asyncio.sleep(0.5)
             except: pass
 
@@ -685,7 +718,12 @@ async def play_commnd(
             try:
                 if getattr(mystic, "text", None):
                     time_str = get_timer_text(command_start_time)
-                    await mystic.edit_text(f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`")
+                    await mystic.edit_text(
+                        f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
+                        f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
+                        f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
+                        f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
+                    )
                     await asyncio.sleep(0.5)
             except: pass
 
@@ -725,7 +763,12 @@ async def play_commnd(
             try:
                 if getattr(mystic, "text", None):
                     time_str = get_timer_text(command_start_time)
-                    await mystic.edit_text(f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`")
+                    await mystic.edit_text(
+                        f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
+                        f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
+                        f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
+                        f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
+                    )
                     await asyncio.sleep(0.5)
             except: pass
 
@@ -814,7 +857,12 @@ async def play_commnd(
         try:
             if getattr(mystic, "text", None):
                 time_str = get_timer_text(command_start_time)
-                await mystic.edit_text(f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`")
+                await mystic.edit_text(
+                    f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
+                    f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
+                    f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
+                    f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
+                )
                 await asyncio.sleep(0.5)
         except: pass
 
@@ -860,7 +908,12 @@ async def play_commnd(
             try:
                 if getattr(mystic, "text", None):
                     time_str = get_timer_text(command_start_time)
-                    await mystic.edit_text(f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`")
+                    await mystic.edit_text(
+                        f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
+                        f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
+                        f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
+                        f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
+                    )
                     await asyncio.sleep(0.5)
             except: pass
             
@@ -886,7 +939,12 @@ async def play_commnd(
                 try:
                     if getattr(mystic, "text", None):
                         time_str = get_timer_text(command_start_time)
-                        await mystic.edit_text(f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`")
+                        await mystic.edit_text(
+                            f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
+                            f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
+                            f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
+                            f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
+                        )
                         await asyncio.sleep(0.5)
                 except: pass
                 
@@ -909,7 +967,12 @@ async def play_commnd(
                 try:
                     if getattr(mystic, "text", None):
                         time_str = get_timer_text(command_start_time)
-                        await mystic.edit_text(f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`")
+                        await mystic.edit_text(
+                            f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
+                            f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
+                            f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
+                            f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
+                        )
                         await asyncio.sleep(0.5)
                 except: pass
                 
@@ -980,7 +1043,12 @@ async def play_music(client, CallbackQuery, _):
     
     try:
         time_str = get_timer_text(cb_start_time)
-        await mystic.edit_text(f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`")
+        await mystic.edit_text(
+            f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
+            f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
+            f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
+            f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
+        )
         await asyncio.sleep(0.5)
     except: pass
 
@@ -1087,7 +1155,12 @@ async def play_playlists_command(client, CallbackQuery, _):
             
     try:
         time_str = get_timer_text(cb_start_time)
-        await mystic.edit_text(f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`")
+        await mystic.edit_text(
+            f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
+            f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
+            f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
+            f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
+        )
         await asyncio.sleep(0.5)
     except: pass
 
