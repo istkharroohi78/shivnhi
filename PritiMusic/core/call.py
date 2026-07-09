@@ -2,6 +2,7 @@ import asyncio
 import os
 import random
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Union
 
@@ -374,7 +375,7 @@ class Call(PyTgCalls):
         await music_on(chat_id)
         if video: await add_active_video_chat(chat_id)
         
-        if await is_autoend():
+        if await is_autoend(chat_id):
             counter[chat_id] = {}
             try:
                 users = len(await assistant_to_join.get_participants(chat_id))
@@ -411,13 +412,61 @@ class Call(PyTgCalls):
 
                     try:
                         keywords_map = {
-                            "Hindi": ["arijit singh", "shreya ghoshal", "atif aslam", "neha kakkar", "jubin nautiyal", "darshan raval", "armaan malik", "sonu nigam", "badshah", "sunidhi chauhan", "udit narayan", "kumar sanu", "alka yagnik", "sachet tandon", "parampara", "b praak", "vishal mishra", "shilpa rao", "kk", "mohit chauhan", "ar rahman", "pritam", "mithoon"],
-                            "Punjabi": ["sidhu moose wala", "karan aujla", "diljit dosanjh", "ap dhillon", "amrit maan", "shubh", "kaka", "hardy sandhu", "guru randhawa", "jass manak", "parmish verma", "jaani", "ammy virk", "garry sandhu"],
-                            "Bhojpuri": ["pawan singh", "khesari lal yadav", "shilpi raj", "antra singh", "pramod premi", "ritesh pandey", "arvind akela kallu", "gunjan singh", "samar singh", "neha raj"],
-                            "Haryanvi": ["sapna choudhary", "renuka panwar", "gulzaar chhaniwala", "sumit goswami", "raju punjabi", "amit saini rohtakiya", "pranjal dahiya", "md kd", "masoom sharma"],
-                            "Tamil": ["anirudh", "ar rahman", "yuvan shankar raja", "sid sriram", "harris jayaraj", "ilaiyaraaja"],
-                            "Telugu": ["devi sri prasad", "dsp", "thaman", "sid sriram", "anurag kulkarni", "mangli"],
-                            "English": ["taylor swift", "justin bieber", "ed sheeran", "ariana grande", "the weeknd", "drake", "eminem", "billie eilish", "dua lipa", "post malone"]
+                            "Hindi": [
+                                "arijit singh", "shreya ghoshal", "atif aslam", "neha kakkar", "jubin nautiyal", 
+                                "darshan raval", "armaan malik", "sonu nigam", "badshah", "sunidhi chauhan", 
+                                "udit narayan", "kumar sanu", "alka yagnik", "sachet tandon", "parampara", 
+                                "b praak", "vishal mishra", "shilpa rao", "kk", "mohit chauhan", "ar rahman", 
+                                "pritam", "mithoon", "kishore kumar", "lata mangeshkar", "asha bhosle", 
+                                "mukesh", "mohammed rafi", "mika singh", "yo yo honey singh", "guru randhawa", 
+                                "tony kakkar", "neeti mohan", "monali thakur", "palak muchhal", "amit trivedi", 
+                                "rahat fateh ali khan", "shafqat amanat ali", "tulsi kumar", "amaal mallik", 
+                                "rochak kohli", "stebin ben", "javed ali", "kailash kher", "shankar mahadevan",
+                                "amit mishra", "dhvani bhanushali", "divya kumar", "nakash aziz"
+                            ],
+                            "Punjabi": [
+                                "sidhu moose wala", "karan aujla", "diljit dosanjh", "ap dhillon", "amrit maan", 
+                                "shubh", "kaka", "hardy sandhu", "guru randhawa", "jass manak", "parmish verma", 
+                                "jaani", "ammy virk", "garry sandhu", "jassie gill", "babbu maan", "gurdas maan", 
+                                "sharry mann", "mankirt aulakh", "nimrat khaira", "jasmine sandlas", "sunanda sharma", 
+                                "miss pooja", "bohemia", "imran khan", "dr zeus", "jazzy b", "gippy grewal", 
+                                "akhil", "prabh gill", "guri", "tarsem jassar", "ranjit bawa", "kavita seth"
+                            ],
+                            "Bhojpuri": [
+                                "pawan singh", "khesari lal yadav", "shilpi raj", "antra singh", "pramod premi", 
+                                "ritesh pandey", "arvind akela kallu", "gunjan singh", "samar singh", "neha raj", 
+                                "manoj tiwari", "ravi kishan", "dinesh lal yadav", "nirahua", "kalpana", 
+                                "indu sonali", "priyanka singh", "ankush raja", "golu gold", "neelkamal singh", 
+                                "rakesh mishra", "akshara singh", "mohan rathore", "khushboo tiwari"
+                            ],
+                            "Haryanvi": [
+                                "sapna choudhary", "renuka panwar", "gulzaar chhaniwala", "sumit goswami", 
+                                "raju punjabi", "amit saini rohtakiya", "pranjal dahiya", "md kd", "masoom sharma", 
+                                "fazilpuria", "gajender phogat", "vikas kumar", "raj mawar", "surender romio", 
+                                "ruchika jangid", "anu kadyan", "diler kharkiya", "kd desi rock", "ajay hooda", 
+                                "danjal", "anjali raghav"
+                            ],
+                            "Tamil": [
+                                "anirudh", "ar rahman", "yuvan shankar raja", "sid sriram", "harris jayaraj", 
+                                "ilaiyaraaja", "spb", "s p balasubrahmanyam", "k s chithra", "sujatha", 
+                                "karthik", "vijay prakash", "benny dayal", "haricharan", "d imman", 
+                                "g v prakash", "santhosh narayanan", "vidyasagar", "deva", "pradeep kumar", 
+                                "sean roldan", "chinmayi", "shweta mohan", "hariharan", "naresh iyer"
+                            ],
+                            "Telugu": [
+                                "devi sri prasad", "dsp", "thaman", "sid sriram", "anurag kulkarni", "mangli", 
+                                "mm keeravani", "mani sharma", "s p balasubrahmanyam", "k s chithra", "sunitha", 
+                                "geetha madhuri", "rahul sipligunj", "ram miriyala", "mickey j meyer", 
+                                "gopi sundar", "s p b charan", "singer smita", "karthik", "hemanth", "inno genga"
+                            ],
+                            "English": [
+                                "taylor swift", "justin bieber", "ed sheeran", "ariana grande", "the weeknd", 
+                                "drake", "eminem", "billie eilish", "dua lipa", "post malone", "harry styles", 
+                                "selena gomez", "bruno mars", "maroon 5", "coldplay", "imagine dragons", 
+                                "rihanna", "beyonce", "adele", "lady gaga", "katy perry", "shawn mendes", 
+                                "charlie puth", "olivia rodrigo", "doja cat", "lil nas x", "kendrick lamar", 
+                                "j cole", "travis scott", "miley cyrus", "shakira", "david guetta", "calvin harris"
+                            ]
                         }
 
                         ignore_artist_kws = ["hindi", "punjabi", "bhojpuri", "haryanvi", "tamil", "telugu", "english"]
@@ -468,13 +517,21 @@ class Call(PyTgCalls):
                             query_parts.append(random.choice(random_modifiers))
                             search_query = " ".join(query_parts)
                         else:
-                            # Agar artist/lang nahi mila, toh base search
-                            search_query = f"More like {raw_title} audio track"
+                            # 🚨 REPEAT FIX FOR UNKNOWN ARTISTS (Like Sheheryar Rehan)
+                            # Yeh extra kachra (jaise " | Music Video", "- Visual Galaxy") hata dega
+                            clean_title = re.sub(r'[\[\(].*?[\]\)]', '', str(raw_title))
+                            clean_title = clean_title.split("|")[0].split("-")[0].split(",")[0].strip()
+                            
+                            # Exact song mashup ko block karne ke liye fresh modifiers
+                            fallback_modifiers = ["similar artists", "playlist", "radio mix", "hits"]
+                            search_query = f"{clean_title} {random.choice(fallback_modifiers)}"
+                            
+                            detected_artist = "Smart Fallback"
 
                         # 🚨 CRITICAL LOOP BREAKER
-                        # Agar YouTube ek hi song par loop ho raha hai, toh 50% time hum last_vidid 
+                        # Agar YouTube ek hi song par loop ho raha hai, toh hum last_vidid 
                         # hata denge taaki algorithm fresh random search kare.
-                        use_vidid = last_vidid if random.randint(1, 10) <= 5 else None
+                        use_vidid = last_vidid if random.randint(1, 10) <= 4 else None
 
                         # max_duration 600 (10 mins) set hai taaki 1-hour jukeboxes na bajne lage
                         recommendation = await YouTube.autoplay(last_vidid=use_vidid, title=search_query, max_duration=600) 
