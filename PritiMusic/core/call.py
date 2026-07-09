@@ -443,32 +443,48 @@ class Call(PyTgCalls):
                                 break
 
                         # 🟢 SPOTIFY RADIO STYLE QUERY BUILDER
-                        # Adding "audio track" avoids 1-hour compilations and forces single songs
                         query_parts = []
-                        if detected_artist:
+
+                        # Spotify Logic: Same Artist (70% chance) ya Same Language ka New Artist (30% chance)
+                        if detected_lang:
+                            available_singers = [s for s in keywords_map[detected_lang] if s not in ignore_artist_kws]
+                            
+                            # Randomly decide to stick with artist or switch
+                            if detected_artist and random.randint(1, 10) <= 7:
+                                query_parts.append(detected_artist)
+                            elif available_singers:
+                                new_singer = random.choice(available_singers).title()
+                                query_parts.append(new_singer)
+                                detected_artist = new_singer  # Logs ke liye naam update kar diya
+                        elif detected_artist:
                             query_parts.append(detected_artist)
-                        if detected_lang and not detected_artist:
-                            query_parts.append(detected_lang)
                             
                         if query_parts:
                             if detected_mood:
                                 query_parts.append(detected_mood)
-                            # Key change: searching for "audio track" / "single" like Spotify
-                            query_parts.append("audio track")
+                                
+                            # Repeat issue fix: Har baar search query ko alag banane ke liye random modifier
+                            random_modifiers = ["audio track", "lyrical", "best of", "hits", "new", "live", "unplugged"]
+                            query_parts.append(random.choice(random_modifiers))
                             search_query = " ".join(query_parts)
                         else:
-                            # Rely on YouTube's exact algorithm to find the literal "Next Track"
+                            # Agar artist/lang nahi mila, toh base search
                             search_query = f"More like {raw_title} audio track"
 
-                        # Use the algorithmic recommendation (last_vidid) as primary, with the smart search as the filter/fallback
-                        recommendation = await YouTube.autoplay(last_vidid=last_vidid, title=search_query, max_duration=600) # Restricted max_dur to 10 mins to avoid jukeboxes
+                        # 🚨 CRITICAL LOOP BREAKER
+                        # Agar YouTube ek hi song par loop ho raha hai, toh 50% time hum last_vidid 
+                        # hata denge taaki algorithm fresh random search kare.
+                        use_vidid = last_vidid if random.randint(1, 10) <= 5 else None
+
+                        # max_duration 600 (10 mins) set hai taaki 1-hour jukeboxes na bajne lage
+                        recommendation = await YouTube.autoplay(last_vidid=use_vidid, title=search_query, max_duration=600) 
                         
                         if recommendation:
                             db[chat_id].append({
                                 "title": str(recommendation.get("title", "Unknown Title")),
                                 "dur": recommendation.get("duration_min", "0:00"),
                                 "streamtype": popped.get("streamtype", "audio") if popped else "audio",
-                                "by": "Spotify Radio 🟢",
+                                "by": "❍ ʙʏ ➥ Spotify Radio 🟢",
                                 "user_id": 0,
                                 "chat_id": chat_id,
                                 "file": f"vid_{recommendation.get('vidid', '')}",
