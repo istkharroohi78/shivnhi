@@ -262,22 +262,25 @@ async def set_upvotes(chat_id: int, mode: int):
     )
 
 
-async def is_autoend() -> bool:
-    chat_id = 1234
+# ----------------------------------------------------
+# ✅ FIXED AUTOEND FUNCTIONS START HERE
+# ----------------------------------------------------
+async def is_autoend(chat_id: int) -> bool:
     user = await autoenddb.find_one({"chat_id": chat_id})
     if not user:
         return False
     return True
 
 
-async def autoend_on():
-    chat_id = 1234
+async def autoend_on(chat_id: int):
     await autoenddb.insert_one({"chat_id": chat_id})
 
 
-async def autoend_off():
-    chat_id = 1234
+async def autoend_off(chat_id: int):
     await autoenddb.delete_one({"chat_id": chat_id})
+# ----------------------------------------------------
+# ✅ FIXED AUTOEND FUNCTIONS END HERE
+# ----------------------------------------------------
 
 
 async def get_loop(chat_id: int) -> int:
@@ -829,4 +832,3 @@ async def add_served_chat_clone(chat_id: int, bot_id: int):
 
 async def get_served_chats_clone(bot_id: int) -> list:
     return [chat async for chat in chatsdbc.find({"bot_id": bot_id})]
-
