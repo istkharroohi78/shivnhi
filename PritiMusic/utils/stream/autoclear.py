@@ -1,6 +1,7 @@
 import os
 import time
 import asyncio
+import gc  # 🚀 Added this for RAM (Memory) cleanup
 import config
 from config import autoclean
 from PritiMusic import LOGGER, app
@@ -89,6 +90,12 @@ async def auto_clean(popped):
                     await app.send_message(int(logger_id), log_text)
                 except Exception as e:
                     LOGGER(__name__).warning(f"Failed to send Cache Log to GC: {e}")
+
+        # 🚀 6. FORCE RAM CLEANUP (Yeh aapke R14 Crash ko rokega)
+        # Yeh memory me phase hue purane data/variables ko zabardasti clean kar dega
+        collected = gc.collect()
+        if collected > 0:
+            LOGGER(__name__).info(f"🧹 RAM Garbage Collector freed {collected} unused memory objects.")
 
     except Exception as e:
         LOGGER(__name__).error(f"Auto-Clean Error: {e}")
