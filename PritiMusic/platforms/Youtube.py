@@ -15,15 +15,15 @@ from youtubesearchpython.__future__ import VideosSearch, Playlist
 DOWNLOAD_DIR = "downloads"
 LOGGER = logging.getLogger(__name__)
 
-# Apixhub API (Primary)
+# 1. BabiesIQ API (Primary)
+BABIESIQ_API_URL = os.getenv("BABIESIQ_API_URL", "https://api.babiesiq.tech")
+BABIESIQ_API_KEY = os.getenv("BABIESIQ_API_KEY", "ADMINBABYX_BE1B36999F84D14C6DAF231FA4768710577EC9A1")
+
+# 2. Apixhub API (Secondary)
 APIXHUB_API_URL = os.getenv("APIXHUB_API_URL", "https://bot.apixhub.fun")
 APIXHUB_API_KEY = os.getenv("APIXHUB_API_KEY", "OijUY78533DPoPnOkwIK7qImQk")
 
-# Worker API (Secondary)
-WORKER_FALLBACK_API_URL = os.getenv("WORKER_FALLBACK_API_URL", "https://youtubenewapi.skybotsdeveloper.workers.dev")
-WORKER_FALLBACK_API_KEY = os.getenv("WORKER_FALLBACK_API_KEY", "itsmesid")
-
-# Shruti API (Tertiary)
+# 3. Shruti API (Tertiary)
 API_URL = os.environ.get("SHRUTI_API_URL", "https://api.shrutibots.site")
 API_KEY = os.environ.get("SHRUTI_API_KEY", "ShrutiBotsC0WH1GowF2HkGoKv4F3y")
 
@@ -54,7 +54,55 @@ async def _async_run(func, *args, **kwargs):
 
 # ----------------- DOWNLOADERS -----------------
 
-# 1. Apixhub Downloader (NEW PRIMARY)
+# 1. BabiesIQ Downloader (PRIMARY)
+async def babiesiq_download(video_id: str, download_type: str, title: str = None) -> str:
+    if not BABIESIQ_API_URL or not BABIESIQ_API_KEY:
+        return None
+
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    filename = get_safe_filename(title, f"biq_{video_id}")
+    ext = "mp4" if download_type == "video" else "mp3"
+    file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{ext}")
+
+    if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
+        return file_path
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            params = {
+                "url": video_id, 
+                "type": "audio" if download_type == "audio" else "video", 
+                "api_key": BABIESIQ_API_KEY,
+                "stream": "false" # Disabled stream mode
+            }
+            async with session.get(
+                f"{BABIESIQ_API_URL}/download", 
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=600)
+            ) as resp:
+                if resp.status != 200:
+                    LOGGER.error(f"BabiesIQ API Error: Status {resp.status}")
+                    return None
+                
+                with open(file_path, "wb") as f:
+                    async for chunk in resp.content.iter_chunked(131072):
+                        f.write(chunk)
+                        
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
+            LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{title}' from BabiesIQ API!")
+            return file_path
+        else:
+            LOGGER.warning(f"🔴 BabiesIQ API returned corrupted/empty file for '{title}'. Rejecting it.")
+            return None
+    except Exception as e:
+        LOGGER.error(f"BabiesIQ API Download Error: {e}")
+        if os.path.exists(file_path):
+            try: os.remove(file_path)
+            except: pass
+        return None
+
+
+# 2. Apixhub Downloader (SECONDARY)
 async def apixhub_download(video_id: str, download_type: str, title: str = None) -> str:
     if not APIXHUB_API_URL or not APIXHUB_API_KEY:
         return None
@@ -69,10 +117,15 @@ async def apixhub_download(video_id: str, download_type: str, title: str = None)
 
     try:
         async with aiohttp.ClientSession() as session:
-            endpoint = "streamvideo" if download_type == "video" else "streamaudio"
-            url = f"{APIXHUB_API_URL}/{endpoint}/{video_id}?key={APIXHUB_API_KEY}"
+            # Using the standard /download endpoint pattern to pass stream=false cleanly
+            params = {
+                "url": video_id, 
+                "type": "audio" if download_type == "audio" else "video", 
+                "api_key": APIXHUB_API_KEY,
+                "stream": "false" # Disabled stream mode
+            }
             
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=600)) as resp:
+            async with session.get(f"{APIXHUB_API_URL}/download", params=params, timeout=aiohttp.ClientTimeout(total=600)) as resp:
                 if resp.status != 200:
                     LOGGER.error(f"Apixhub API Error: Status {resp.status}")
                     return None
@@ -94,52 +147,8 @@ async def apixhub_download(video_id: str, download_type: str, title: str = None)
             except: pass
         return None
 
-# Worker Downloader
-async def worker_api_download(video_id: str, download_type: str, title: str = None) -> str:
-    if not WORKER_FALLBACK_API_URL or not WORKER_FALLBACK_API_KEY:
-        return None
 
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    filename = get_safe_filename(title, f"wk_{video_id}")
-    ext = "mp4" if download_type == "video" else "mp3"
-    file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{ext}")
-
-    if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
-        return file_path
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            params = {
-                "url": video_id, 
-                "type": "audio" if download_type == "audio" else "video", 
-                "api_key": WORKER_FALLBACK_API_KEY
-            }
-            async with session.get(
-                f"{WORKER_FALLBACK_API_URL}/download", 
-                params=params,
-                timeout=aiohttp.ClientTimeout(total=600)
-            ) as resp:
-                if resp.status != 200:
-                    LOGGER.error(f"Worker API Error: Status {resp.status}")
-                    return None
-                
-                with open(file_path, "wb") as f:
-                    async for chunk in resp.content.iter_chunked(131072):
-                        f.write(chunk)
-                        
-        if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
-            return file_path
-        else:
-            LOGGER.warning(f"🔴 Worker API returned corrupted/empty file for '{title}'. Rejecting it.")
-            return None
-    except Exception as e:
-        LOGGER.error(f"Worker API Download Error: {e}")
-        if os.path.exists(file_path):
-            try: os.remove(file_path)
-            except: pass
-        return None
-
-# Shruti Downloader
+# 3. Shruti Downloader (TERTIARY)
 async def api_download(video_id: str, download_type: str, title: str = None) -> str:
     if not API_URL or not API_KEY:
         return None
@@ -154,9 +163,15 @@ async def api_download(video_id: str, download_type: str, title: str = None) -> 
 
     try:
         async with aiohttp.ClientSession() as session:
+            params = {
+                "url": video_id, 
+                "type": "audio" if download_type == "audio" else "video", 
+                "api_key": API_KEY,
+                "stream": "false" # Disabled stream mode
+            }
             async with session.get(
                 f"{API_URL}/download",
-                params={"url": video_id, "type": "audio" if download_type == "audio" else "video", "api_key": API_KEY},
+                params=params,
                 timeout=aiohttp.ClientTimeout(total=600)
             ) as resp:
                 if resp.status != 200:
@@ -325,19 +340,19 @@ async def download_song(link: str, title: str = None) -> str:
         except Exception:
             pass
 
-    # 1. Primary API (Apixhub)
+    # 1. Primary API (BabiesIQ)
+    babiesiq_result = await babiesiq_download(video_id, "audio", title)
+    if babiesiq_result: return babiesiq_result
+    
+    LOGGER.warning(f"🔴 BabiesIQ API failed for '{title}'. Hopping to Apixhub API...")
+
+    # 2. Secondary API (Apixhub)
     apixhub_result = await apixhub_download(video_id, "audio", title)
     if apixhub_result: return apixhub_result
-    
-    LOGGER.warning(f"🔴 Apixhub API failed for '{title}'. Hopping to Worker API...")
 
-    # 2. Secondary API (Worker)
-    worker_result = await worker_api_download(video_id, "audio", title)
-    if worker_result: return worker_result
+    LOGGER.warning(f"🔴 Apixhub API failed for '{title}'. Hopping to Shruti API...")
 
-    LOGGER.warning(f"🔴 Worker API failed for '{title}'. Hopping to Shruti API...")
-
-    # 3. Shruti API Fallback
+    # 3. Tertiary API (Shruti)
     api_result = await api_download(video_id, "audio", title)
     if api_result: return api_result
     
@@ -379,19 +394,19 @@ async def download_video(link: str, title: str = None) -> str:
         except:
             pass
 
-    # 1. Primary API (Apixhub)
+    # 1. Primary API (BabiesIQ)
+    babiesiq_result = await babiesiq_download(video_id, "video", title)
+    if babiesiq_result: return babiesiq_result
+
+    LOGGER.warning(f"🔴 BabiesIQ API failed for '{title}'. Hopping to Apixhub API...")
+
+    # 2. Secondary API (Apixhub)
     apixhub_result = await apixhub_download(video_id, "video", title)
     if apixhub_result: return apixhub_result
 
-    LOGGER.warning(f"🔴 Apixhub API failed for '{title}'. Hopping to Worker API...")
+    LOGGER.warning(f"🔴 Apixhub API failed for '{title}'. Hopping to Shruti API...")
 
-    # 2. Secondary API (Worker)
-    worker_result = await worker_api_download(video_id, "video", title)
-    if worker_result: return worker_result
-
-    LOGGER.warning(f"🔴 Worker API failed for '{title}'. Hopping to Shruti API...")
-
-    # 3. Shruti API Fallback
+    # 3. Tertiary API (Shruti)
     api_result = await api_download(video_id, "video", title)
     if api_result: return api_result
     
