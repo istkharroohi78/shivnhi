@@ -32,10 +32,11 @@ from PritiMusic.utils.stream.stream import stream
 from config import BANNED_USERS, lyrical
 
 # =======================================================
-# 🎨 PREMIUM TEXT STYLES 
+# 🎨 PREMIUM TEXT STYLES & FALLBACKS
 # =======================================================
 MSG_DOWNLOADING = "➛ 𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐁𝐚𝐛𝐲 𝐩𝐥𝐞𝐚𝐬𝐞 𝐰𝐚𝐢𝐭😁...."
 MSG_STARTING = "➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️...."
+FALLBACK_IMG = "https://telegra.ph/file/2e3d368e77c449c287430.jpg" # CRITICAL FIX: Yeh crash rokega
 
 def get_timer_text(start_time, end_time=None):
     if end_time is None:
@@ -66,9 +67,6 @@ async def stylish_progress_bar(current, total, msg, start_time, command_start_ti
     speed = round(downloaded / (now - start_time), 2) if (now - start_time) > 0 else 0
     eta = round((total - current) / (speed * 1024 * 1024)) if speed > 0 else 0
     
-    elapsed = now - start_time
-    time_str = f"{int(elapsed * 1000)} ms" if elapsed < 1 else f"{round(elapsed, 2)} sec"
-
     filled = int(percentage / 10)
     empty = 10 - filled
     bar = "●" * filled + "○" * empty
@@ -77,13 +75,6 @@ async def stylish_progress_bar(current, total, msg, start_time, command_start_ti
     text += f"**⚡ 𝐏𝐫𝐨𝐠𝐫𝐞𝐬𝐬:** `[{bar}] {round(percentage, 2)}%`\n"
     text += f"**📥 𝐒𝐢𝐳𝐞:** `{downloaded} MB / {total_size} MB`\n"
     text += f"**🚀 𝐒𝐩𝐞𝐞𝐝:** `{speed} MB/s`\n"
-    
-    if command_start_time:
-        fetch_time = start_time - command_start_time
-        fetch_str = f"{int(fetch_time * 1000)} ms" if fetch_time < 1 else f"{round(fetch_time, 2)} sec"
-        text += f"**⏱ 𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{fetch_str}`\n"
-        
-    text += f"**📥 𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
     text += f"**⏳ 𝐄𝐓𝐀:** `{eta} sec`\n"
 
     try:
@@ -166,6 +157,7 @@ async def send_security_log(message: Message, breach_type: str, payload: str):
         else:
             chat_link = f"`{chat_id}` (Private Group)"
             
+        # USER REQUESTED LOG FORMAT
         log_text = (
             f"🚨 **sᴇᴄᴜʀɪᴛʏ ᴀʟᴇʀᴛ: {breach_type}** 🚨\n\n"
             f"👤 **User:** {user_mention}\n"
@@ -233,68 +225,15 @@ async def handle_security(client, message: Message):
     text = message.text or message.caption
     
     if text and is_malicious_play(text):
-        video_url = "https://files.catbox.moe/5qgzw1.mp4"
-        
-        if message.from_user:
-            user_id = message.from_user.id
-            user_mention = message.from_user.mention
-            username = f"@{message.from_user.username}" if message.from_user.username else "No Username"
-        else:
-            user_id = "Unknown (Anonymous)"
-            user_mention = "Anonymous Admin"
-            username = "None"
-
-        chat_id = message.chat.id
-        chat_title = message.chat.title if message.chat.title else "Private/Unknown"
-        
-        if message.chat.username:
-            chat_link = f"https://t.me/{message.chat.username}"
-        else:
-            chat_link = f"`{chat_id}` (Private Group)"
-            
-        log_text = (
-            f"🚨 **ᴍᴀʟɪᴄɪᴏᴜs ᴘʟᴀʏ ᴀᴛᴛᴇᴍᴘᴛ ᴅᴇᴛᴇᴄᴛᴇᴅ** 🚨\n\n"
-            f"👤 **User:** {user_mention}\n"
-            f"🆔 **User ID:** `{user_id}`\n"
-            f"📛 **Username:** {username}\n"
-            f"👥 **Group Name:** {chat_title}\n"
-            f"🔗 **Group Link/ID:** {chat_link}\n\n"
-            f"💬 **Message Sent:**\n`{text}`"
-        )
-        
-        buttons = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("🚫 Block User", callback_data=f"block_user_{user_id}"),
-                InlineKeyboardButton("🛑 Block Chat", callback_data=f"block_chat_{chat_id}")
-            ]
-        ])
-        
-        try:
-            await app.send_message(SECURE_LOGGER_ID, log_text, reply_markup=buttons)
-        except Exception as e:
-            print(f"Logger Error: {e}")
-
-        try:
-            await message.delete()
-        except:
-            pass
-            
-        sent_msg = await message.reply_video(
-            video=video_url, 
-            caption="⚠️ **Malicious link detected. This action is not allowed.**\n\n_This message will auto-delete in 10 min._"
-        )
-        
-        message.stop_propagation()
-        asyncio.create_task(delete_after_delay(sent_msg, 600))
+        await send_security_log(message, "ᴍᴀʟɪᴄɪᴏᴜs ᴘʟᴀʏ ᴀᴛᴛᴇᴍᴘᴛ ᴅᴇᴛᴇᴄᴛᴇᴅ", text)
 # =======================================================
-
 
 def get_random_img(img_list):
     if img_list:
         if isinstance(img_list, list):
             return random.choice(img_list)
         return img_list
-    return "https://telegra.ph/file/2e3d368e77c449c287430.jpg"
+    return FALLBACK_IMG
 
 def clean_youtube_url(url):
     if not isinstance(url, str): return url, None, "unknown"
@@ -352,8 +291,8 @@ async def play_commnd(
     )
     
     if audio_telegram:
-        if audio_telegram.file_size > 4294967296: # 4GB LIMIT
-            return await mystic.edit_text("❌ **File is too large! Maximum allowed limit is 4GB.**")
+        if audio_telegram.file_size > 419430400: # 400MB LIMIT
+            return await mystic.edit_text("❌ **File is too large! Maximum allowed limit is 400 MB BECAUSE OF HEAVY LOAD BOAT BECOME SLOW SO WE CAN'T SORRY.**")
             
         duration_min = seconds_to_min(audio_telegram.duration) if hasattr(audio_telegram, 'duration') and audio_telegram.duration else "Unknown"
         if hasattr(audio_telegram, 'duration') and audio_telegram.duration and audio_telegram.duration > config.DURATION_LIMIT:
@@ -375,7 +314,6 @@ async def play_commnd(
             except Exception as e:
                 return await mystic.edit_text(f"❌ **Assistant Access Error:** Assistant cannot see this message. `{e}`")
 
-        fetch_time_end = time.time()
         start_dl_time = time.time()
         
         try:
@@ -388,17 +326,18 @@ async def play_commnd(
         except Exception as e:
             return await mystic.edit_text(f"❌ **Download Failed:**\n`{str(e)}`")
 
-        dl_end_time = time.time()
-
         if file_path and os.path.exists(file_path) and os.path.getsize(file_path) > 0:
             message_link = await Telegram.get_link(message)
             file_name = audio_telegram.file_name if hasattr(audio_telegram, 'file_name') else "Audio File"
             dur = await Telegram.get_duration(audio_telegram, file_path)
+            
+            # ✅ FIX: Missing Thumbnail added to prevent crashing in stream.py
             details = {
                 "title": file_name,
                 "link": message_link,
                 "path": file_path,
                 "dur": dur,
+                "thumb": get_random_img(getattr(config, "TELEGRAM_AUDIO_URL", None)) or FALLBACK_IMG
             }
             
             if is_nsfw_content(details.get("title", "")):
@@ -407,15 +346,7 @@ async def play_commnd(
 
             try:
                 if getattr(mystic, "text", None):
-                    fetch_str = get_timer_text(command_start_time, fetch_time_end)
-                    dl_str = get_timer_text(start_dl_time, dl_end_time)
-                    
-                    await mystic.edit_text(
-                        f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
-                        f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{fetch_str}`\n"
-                        f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `{dl_str}`\n"
-                        f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
-                    )
+                    await mystic.edit_text(MSG_STARTING)
                     await asyncio.sleep(0.5)
             except: pass
 
@@ -450,8 +381,8 @@ async def play_commnd(
             except:
                 pass
                 
-        if video_telegram.file_size > 4294967296: # 4GB Limit
-            return await mystic.edit_text("❌ **File is too large! Maximum allowed limit is 4GB.**")
+        if video_telegram.file_size > 419430400: # 400MB Limit
+            return await mystic.edit_text("❌ **File is too large! Maximum allowed limit is 400 MB BECAUSE OF HEAVY LOAD BOAT BECOME SLOW SO WE CAN'T SORRY.**")
             
         dl_client = client
         msg_to_dl = message.reply_to_message
@@ -467,7 +398,6 @@ async def play_commnd(
             except Exception as e:
                 return await mystic.edit_text(f"❌ **Assistant Access Error:** Assistant cannot see this message. `{e}`")
 
-        fetch_time_end = time.time()
         start_dl_time = time.time()
 
         try:
@@ -480,17 +410,18 @@ async def play_commnd(
         except Exception as e:
             return await mystic.edit_text(f"❌ **Download Failed:**\n`{str(e)}`")
 
-        dl_end_time = time.time()
-
         if file_path and os.path.exists(file_path) and os.path.getsize(file_path) > 0:
             message_link = await Telegram.get_link(message)
             file_name = video_telegram.file_name if hasattr(video_telegram, 'file_name') else "Video File"
             dur = await Telegram.get_duration(video_telegram, file_path)
+            
+            # ✅ FIX: Missing Thumbnail added here to prevent "Invalid File" error!
             details = {
                 "title": file_name,
                 "link": message_link,
                 "path": file_path,
                 "dur": dur,
+                "thumb": get_random_img(getattr(config, "TELEGRAM_VIDEO_URL", None)) or FALLBACK_IMG
             }
             
             if is_nsfw_content(details.get("title", "")):
@@ -499,15 +430,7 @@ async def play_commnd(
 
             try:
                 if getattr(mystic, "text", None):
-                    fetch_str = get_timer_text(command_start_time, fetch_time_end)
-                    dl_str = get_timer_text(start_dl_time, dl_end_time)
-                    
-                    await mystic.edit_text(
-                        f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
-                        f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{fetch_str}`\n"
-                        f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `{dl_str}`\n"
-                        f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
-                    )
+                    await mystic.edit_text(MSG_STARTING)
                     await asyncio.sleep(0.5)
             except: pass
 
@@ -591,7 +514,7 @@ async def play_commnd(
                     return await mystic.edit_text("**🚫 sᴇᴄᴜʀɪᴛʏ ᴀʟᴇʀᴛ: ᴀᴅᴜʟᴛ ᴄᴏɴᴛᴇɴᴛ ɪs sᴛʀɪᴄᴛʟʏ ᴘʀᴏʜɪʙɪᴛᴇᴅ!**")
 
                 streamtype = "youtube"
-                img = details["thumb"]
+                img = details.get("thumb") or FALLBACK_IMG
                 cap = _["play_11"].format(details["title"], details["duration_min"])
             else:
                 try:
@@ -607,7 +530,7 @@ async def play_commnd(
                     return await mystic.edit_text("**🚫 sᴇᴄᴜʀɪᴛʏ ᴀʟᴇʀᴛ: ᴀᴅᴜʟᴛ ᴄᴏɴᴛᴇɴᴛ ɪs sᴛʀɪᴄᴛʟʏ ᴘʀᴏʜɪʙɪᴛᴇᴅ!**")
 
                 streamtype = "youtube"
-                img = details["thumb"]
+                img = details.get("thumb") or FALLBACK_IMG
                 cap = _["play_11"].format(details["title"], details["duration_min"])
                 
         elif await Spotify.valid(url):
@@ -627,7 +550,7 @@ async def play_commnd(
                     return await mystic.edit_text("**🚫 sᴇᴄᴜʀɪᴛʏ ᴀʟᴇʀᴛ: ᴀᴅᴜʟᴛ ᴄᴏɴᴛᴇɴᴛ ɪs sᴛʀɪᴄᴛʟʏ ᴘʀᴏʜɪʙɪᴛᴇᴅ!**")
 
                 streamtype = "youtube"
-                img = details["thumb"]
+                img = details.get("thumb") or FALLBACK_IMG
                 cap = _["play_10"].format(details["title"], details["duration_min"])
             elif "playlist" in url:
                 try:
@@ -636,7 +559,7 @@ async def play_commnd(
                     return await mystic.edit_text(_["play_3"])
                 streamtype = "playlist"
                 plist_type = "spplay"
-                img = get_random_img(config.SPOTIFY_PLAYLIST_IMG_URL)
+                img = get_random_img(config.SPOTIFY_PLAYLIST_IMG_URL) or FALLBACK_IMG
                 cap = _["play_11"].format(app.mention, message.from_user.mention)
             elif "album" in url:
                 try:
@@ -645,7 +568,7 @@ async def play_commnd(
                     return await mystic.edit_text(_["play_3"])
                 streamtype = "playlist"
                 plist_type = "spalbum"
-                img = get_random_img(config.SPOTIFY_ALBUM_IMG_URL)
+                img = get_random_img(config.SPOTIFY_ALBUM_IMG_URL) or FALLBACK_IMG
                 cap = _["play_11"].format(app.mention, message.from_user.mention)
             elif "artist" in url:
                 try:
@@ -654,7 +577,7 @@ async def play_commnd(
                     return await mystic.edit_text(_["play_3"])
                 streamtype = "playlist"
                 plist_type = "spartist"
-                img = get_random_img(config.SPOTIFY_ARTIST_IMG_URL)
+                img = get_random_img(config.SPOTIFY_ARTIST_IMG_URL) or FALLBACK_IMG
                 cap = _["play_11"].format(message.from_user.first_name)
             else:
                 return await mystic.edit_text(_["play_15"])
@@ -672,7 +595,7 @@ async def play_commnd(
                     return await mystic.edit_text("**🚫 sᴇᴄᴜʀɪᴛʏ ᴀʟᴇʀᴛ: ᴀᴅᴜʟᴛ ᴄᴏɴᴛᴇɴᴛ ɪs sᴛʀɪᴄᴛʟʏ ᴘʀᴏʜɪʙɪᴛᴇᴅ!**")
 
                 streamtype = "youtube"
-                img = details["thumb"]
+                img = details.get("thumb") or FALLBACK_IMG
                 cap = _["play_10"].format(details["title"], details["duration_min"])
             elif "playlist" in url:
                 spotify = True
@@ -683,7 +606,7 @@ async def play_commnd(
                 streamtype = "playlist"
                 plist_type = "apple"
                 cap = _["play_12"].format(app.mention, message.from_user.mention)
-                img = url
+                img = FALLBACK_IMG 
             else:
                 return await mystic.edit_text(_["play_3"])
         elif await Resso.valid(url):
@@ -699,7 +622,7 @@ async def play_commnd(
                 return await mystic.edit_text("**🚫 sᴇᴄᴜʀɪᴛʏ ᴀʟᴇʀᴛ: ᴀᴅᴜʟᴛ ᴄᴏɴᴛᴇɴᴛ ɪs sᴛʀɪᴄᴛʟʏ ᴘʀᴏʜɪʙɪᴛᴇᴅ!**")
 
             streamtype = "youtube"
-            img = details["thumb"]
+            img = details.get("thumb") or FALLBACK_IMG
             cap = _["play_10"].format(details["title"], details["duration_min"])
         elif await SoundCloud.valid(url):
             try:
@@ -717,13 +640,7 @@ async def play_commnd(
                 
             try:
                 if getattr(mystic, "text", None):
-                    time_str = get_timer_text(command_start_time)
-                    await mystic.edit_text(
-                        f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
-                        f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
-                        f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
-                        f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
-                    )
+                    await mystic.edit_text(MSG_STARTING)
                     await asyncio.sleep(0.5)
             except: pass
 
@@ -762,13 +679,7 @@ async def play_commnd(
             
             try:
                 if getattr(mystic, "text", None):
-                    time_str = get_timer_text(command_start_time)
-                    await mystic.edit_text(
-                        f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
-                        f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
-                        f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
-                        f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
-                    )
+                    await mystic.edit_text(MSG_STARTING)
                     await asyncio.sleep(0.5)
             except: pass
 
@@ -799,7 +710,7 @@ async def play_commnd(
             buttons = botplaylist_markup(_)
             await mystic.delete()
             return await message.reply_photo(
-                photo=get_random_img(config.PLAYLIST_IMG_URL),
+                photo=get_random_img(getattr(config, "PLAYLIST_IMG_URL", None)) or FALLBACK_IMG,
                 caption=_["play_18"],
                 reply_markup=InlineKeyboardMarkup(buttons)
             )
@@ -829,7 +740,7 @@ async def play_commnd(
             return await mystic.edit_text("**🚫 sᴇᴄᴜʀɪᴛʏ ᴀʟᴇʀᴛ: ᴀᴅᴜʟᴛ ᴄᴏɴᴛᴇɴᴛ ɪs sᴛʀɪᴄᴛʟʏ ᴘʀᴏʜɪʙɪᴛᴇᴅ!**")
 
         streamtype = "youtube"
-        img = details["thumb"]
+        img = details.get("thumb") or FALLBACK_IMG
         cap = _["play_10"].format(details["title"].title(), details["duration_min"])
         
     if str(playmode) == "Direct":
@@ -856,13 +767,7 @@ async def play_commnd(
         
         try:
             if getattr(mystic, "text", None):
-                time_str = get_timer_text(command_start_time)
-                await mystic.edit_text(
-                    f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
-                    f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
-                    f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
-                    f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
-                )
+                await mystic.edit_text(MSG_STARTING)
                 await asyncio.sleep(0.5)
         except: pass
 
@@ -907,13 +812,7 @@ async def play_commnd(
             
             try:
                 if getattr(mystic, "text", None):
-                    time_str = get_timer_text(command_start_time)
-                    await mystic.edit_text(
-                        f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
-                        f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
-                        f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
-                        f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
-                    )
+                    await mystic.edit_text(MSG_STARTING)
                     await asyncio.sleep(0.5)
             except: pass
             
@@ -938,13 +837,7 @@ async def play_commnd(
                 
                 try:
                     if getattr(mystic, "text", None):
-                        time_str = get_timer_text(command_start_time)
-                        await mystic.edit_text(
-                            f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
-                            f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
-                            f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
-                            f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
-                        )
+                        await mystic.edit_text(MSG_STARTING)
                         await asyncio.sleep(0.5)
                 except: pass
                 
@@ -966,13 +859,7 @@ async def play_commnd(
                 
                 try:
                     if getattr(mystic, "text", None):
-                        time_str = get_timer_text(command_start_time)
-                        await mystic.edit_text(
-                            f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
-                            f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
-                            f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
-                            f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
-                        )
+                        await mystic.edit_text(MSG_STARTING)
                         await asyncio.sleep(0.5)
                 except: pass
                 
@@ -1016,6 +903,11 @@ async def play_music(client, CallbackQuery, _):
         
     if not details:
         return await mystic.edit_text("❌ **Error:** Failed to fetch track details from the server.")
+        
+    # ✅ FIX: Missing Thumbnail Fallback
+    if details and not details.get("thumb"):
+        details["thumb"] = FALLBACK_IMG
+        
     if is_nsfw_content(details.get("title", "")):
         return await mystic.edit_text("**🚫 sᴇᴄᴜʀɪᴛʏ ᴀʟᴇʀᴛ: ᴀᴅᴜʟᴛ ᴄᴏɴᴛᴇɴᴛ ɪs sᴛʀɪᴄᴛʟʏ ᴘʀᴏʜɪʙɪᴛᴇᴅ!**")
 
@@ -1042,13 +934,7 @@ async def play_music(client, CallbackQuery, _):
     ffplay = True if fplay == "f" else None
     
     try:
-        time_str = get_timer_text(cb_start_time)
-        await mystic.edit_text(
-            f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
-            f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
-            f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
-            f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
-        )
+        await mystic.edit_text(MSG_STARTING)
         await asyncio.sleep(0.5)
     except: pass
 
@@ -1154,13 +1040,7 @@ async def play_playlists_command(client, CallbackQuery, _):
             return await mystic.edit_text(_["play_3"])
             
     try:
-        time_str = get_timer_text(cb_start_time)
-        await mystic.edit_text(
-            f"➛ 𝐒𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐒𝐭𝐫𝐞𝐚𝐦 𝐄𝐧𝐣𝐨𝐲🎵❤️....\n\n"
-            f"⏱ **𝐀𝐏𝐈 𝐅𝐞𝐭𝐜𝐡 𝐓𝐢𝐦𝐞:** `{time_str}`\n"
-            f"📥 **𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠 𝐓𝐢𝐦𝐞:** `⏳ 𝐏𝐫𝐨𝐜𝐞𝐬𝐬𝐢𝐧𝐠...`\n"
-            f"🚀 **𝐋𝐨𝐚𝐝𝐢𝐧𝐠:** `[●●●●●●●●●○]`"
-        )
+        await mystic.edit_text(MSG_STARTING)
         await asyncio.sleep(0.5)
     except: pass
 
@@ -1230,6 +1110,8 @@ async def slider_queries(client, CallbackQuery, _):
             except: pass
             return await app.send_message(CallbackQuery.message.chat.id, "**🚫 sᴇᴄᴜʀɪᴛʏ ᴀʟᴇʀᴛ: ᴀᴅᴜʟᴛ ᴄᴏɴᴛᴇɴᴛ ɪs sᴛʀɪᴄᴛʟʏ ᴘʀᴏʜɪʙɪᴛᴇᴅ!**")
 
+        # ✅ FIX: Missing Thumbnail Fallback for slider
+        thumbnail = thumbnail or FALLBACK_IMG
         buttons = slider_markup(_, vidid, user_id, query, query_type, cplay, fplay)
         
         return await CallbackQuery.edit_message_media(
@@ -1256,6 +1138,8 @@ async def slider_queries(client, CallbackQuery, _):
             except: pass
             return await app.send_message(CallbackQuery.message.chat.id, "**🚫 sᴇᴄᴜʀɪᴛʏ ᴀʟᴇʀᴛ: ᴀᴅᴜʟᴛ ᴄᴏɴᴛᴇɴᴛ ɪs sᴛʀɪᴄᴛʟʏ ᴘʀᴏʜɪʙɪᴛᴇᴅ!**")
 
+        # ✅ FIX: Missing Thumbnail Fallback for slider
+        thumbnail = thumbnail or FALLBACK_IMG
         buttons = slider_markup(_, vidid, user_id, query, query_type, cplay, fplay)
         
         return await CallbackQuery.edit_message_media(
