@@ -5,10 +5,14 @@ import gc  # 🚀 Added this for RAM (Memory) cleanup
 import config
 from config import autoclean
 from PritiMusic import LOGGER, app
+from pyrogram import filters
+from pyrogram.types import Message
 
 # Settings
 WEEK_IN_SECONDS = 7 * 24 * 60 * 60
-MAX_CACHE_SIZE = 5 * 1024 * 1024 * 1024  # 5 GB limit (Aap isko apne VPS storage ke hisaab se change kar sakte hain)
+ONE_DAY_IN_SECONDS = 24 * 60 * 60 # 1 din (24 hours) ke liye limit
+MAX_CACHE_SIZE = 5 * 1024 * 1024 * 1024  # 5 GB limit
+MAX_FILE_SIZE = 500 * 1024 * 1024 # 500 MB limit
 
 async def auto_clean(popped):
     try:
@@ -24,6 +28,9 @@ async def auto_clean(popped):
             autoclean.remove(rem)
         except ValueError:
             pass
+            
+        if not os.path.exists(rem):
+            return
 
         # 2. Identify the folder where songs are being saved
         directory = os.path.dirname(rem)
@@ -32,10 +39,21 @@ async def auto_clean(popped):
 
         current_time = time.time()
         deleted_files = []
+        deleted_large_files = []
         all_files = []
         current_cache_size = 0
         
-        # 3. Gather all files and calculate total cache size
+        # 🚀 3. Check and DELETE > 500MB file immediately after it finishes playing
+        rem_size = os.path.getsize(rem)
+        if rem_size > MAX_FILE_SIZE:
+            try:
+                os.remove(rem)
+                deleted_large_files.append(os.path.basename(rem))
+                LOGGER(__name__).info(f"🗑️ Deleted >500MB file immediately: {rem}")
+            except Exception as e:
+                LOGGER(__name__).warning(f"⚠️ Failed to delete large file {rem}: {e}")
+
+        # 4. Gather all files and calculate total cache size
         for filename in os.listdir(directory):
             filepath = os.path.join(directory, filename)
             if os.path.isfile(filepath):
@@ -55,11 +73,15 @@ async def auto_clean(popped):
         # Sort files by age (Sabse purane files list mein upar aayenge)
         all_files.sort(key=lambda x: x["age"], reverse=True)
         
-        # 4. Delete files if older than 7 days OR if storage limit is exceeded
+        # 5. Delete files if older than 7 days OR if storage limit is exceeded
         for f in all_files:
             filepath = f["path"]
             
-            # Delete condition: File age > 7 days YAA Cache limit par ho gaya ho
+            # Agar file already 500MB check me delete ho gayi hai, toh skip karo
+            if not os.path.exists(filepath):
+                continue
+                
+            # Delete condition: File age > 7 days YAA Cache limit paar ho gaya ho
             if (f["age"] > WEEK_IN_SECONDS or current_cache_size > MAX_CACHE_SIZE) and filepath not in autoclean:
                 try:
                     os.remove(filepath)
@@ -69,33 +91,155 @@ async def auto_clean(popped):
                 except Exception as e:
                     LOGGER(__name__).warning(f"⚠️ Failed to clean file {filepath}: {e}")
                     
-        # 5. Send notification to the logger group in blockquotes format
-        if deleted_files:
-            logger_id = getattr(config, "LOG_GROUP_ID", getattr(config, "LOGGER_ID", None))
-            if logger_id:
-                # Quarts/Blockquotes format (> song_name)
+        # 6. Send notification to the logger group in blockquotes format
+        logger_id = getattr(config, "LOG_GROUP_ID", getattr(config, "LOGGER_ID", None))
+        if logger_id:
+            log_text = ""
+            
+            # Agar 500MB se badi file delete hui hai
+            if deleted_large_files:
+                formatted_large = "\n".join([f"> `{name}`" for name in deleted_large_files])
+                log_text += f"🚨 **Big File Auto-Cleaned (>500MB)**\n{formatted_large}\n\n"
+                
+            # Agar purani cache files delete hui hain
+            if deleted_files:
                 formatted_songs = "\n".join([f"> `{name}`" for name in deleted_files])
                 
-                # Agar list bohot lambi ho gayi, toh Telegram message limit (4096 chars) se bachne ke liye truncate karna padega
-                if len(formatted_songs) > 3500:
-                    formatted_songs = formatted_songs[:3500] + "\n> `...aur baaki files.`"
+                # Truncate to avoid Telegram 4096 chars limit
+                if len(formatted_songs) > 3000:
+                    formatted_songs = formatted_songs[:3000] + "\n> `...aur baaki files.`"
                     
-                log_text = (
+                log_text += (
                     "🗑️ **Storage Cache Cleaned**\n\n"
                     "**Neeche diye gaye purane songs space free karne ke liye delete kiye gaye hain:**\n"
                     f"{formatted_songs}"
                 )
                 
+            if log_text:
                 try:
                     await app.send_message(int(logger_id), log_text)
                 except Exception as e:
                     LOGGER(__name__).warning(f"Failed to send Cache Log to GC: {e}")
 
-        # 🚀 6. FORCE RAM CLEANUP (Yeh aapke R14 Crash ko rokega)
-        # Yeh memory me phase hue purane data/variables ko zabardasti clean kar dega
+        # 🚀 7. FORCE RAM CLEANUP
         collected = gc.collect()
         if collected > 0:
             LOGGER(__name__).info(f"🧹 RAM Garbage Collector freed {collected} unused memory objects.")
 
     except Exception as e:
         LOGGER(__name__).error(f"Auto-Clean Error: {e}")
+
+
+# 🚀 8. COMMAND: /cdust (Manual cleanup for files older than 1 day)
+@app.on_message(filters.command("cdust") & filters.user(config.OWNER_ID))
+async def clean_dust_command(client, message: Message):
+    m = await message.reply_text("⏳ `Scanning dust... checking files older than 1 day...`")
+    
+    directory = "./downloads"
+    if not os.path.exists(directory):
+        await m.edit_text("⚠️ `Downloads directory not found!`")
+        return
+
+    current_time = time.time()
+    deleted_count = 0
+    freed_space = 0
+    deleted_files_list = [] # Ye list deleted files ke naam store karegi
+
+    try:
+        for filename in os.listdir(directory):
+            filepath = os.path.join(directory, filename)
+            if os.path.isfile(filepath):
+                if "live_" not in filepath and "index_" not in filepath:
+                    f_age = current_time - os.path.getctime(filepath)
+                    
+                    # Agar file 1 din (24 ghante) se purani hai aur current play queue me nahi hai
+                    if f_age > ONE_DAY_IN_SECONDS and filepath not in autoclean:
+                        f_size = os.path.getsize(filepath)
+                        try:
+                            os.remove(filepath)
+                            deleted_count += 1
+                            freed_space += f_size
+                            deleted_files_list.append(filename) # Delete hote hi naam list me add karo
+                        except:
+                            pass
+
+        # Force RAM clear after manual clean
+        gc.collect()
+
+        if deleted_count > 0:
+            freed_mb = round(freed_space / (1024 * 1024), 2)
+            
+            # 1. Reply to the user who ran the command
+            await m.edit_text(
+                f"🧹 **Dust Cleaned Successfully!**\n\n"
+                f"🗑 **Deleted Files:** `{deleted_count}`\n"
+                f"💾 **Freed Space:** `{freed_mb} MB`\n"
+                f"📝 **Note:** `Details sent to Logger Group.`"
+            )
+            
+            # 2. Send the detailed list to the Logger Group
+            logger_id = getattr(config, "LOG_GROUP_ID", getattr(config, "LOGGER_ID", None))
+            if logger_id and deleted_files_list:
+                formatted_dust = "\n".join([f"> `{name}`" for name in deleted_files_list])
+                
+                # Truncate to avoid Telegram 4096 chars limit
+                if len(formatted_dust) > 3000:
+                    formatted_dust = formatted_dust[:3000] + "\n> `...aur baaki files.`"
+                    
+                log_text = (
+                    f"🧹 **Manual Dust Cleaned (/cdust)**\n\n"
+                    f"**Total {freed_mb} MB space free kiya gaya.**\n"
+                    f"**Neeche diye gaye 1 din se purane songs delete kiye gaye hain:**\n"
+                    f"{formatted_dust}"
+                )
+                try:
+                    await app.send_message(int(logger_id), log_text)
+                except Exception as e:
+                    LOGGER(__name__).warning(f"Failed to send /cdust Log to GC: {e}")
+
+        else:
+            await m.edit_text("✨ `No dusty files found. Storage is already clean! (Kept files from the last 24 hours)`")
+            
+    except Exception as e:
+        await m.edit_text(f"⚠️ **Error occurred:** `{e}`")
+
+
+# 🚀 9. COMMAND: /downloads (Check total storage usage)
+@app.on_message(filters.command("downloads") & filters.user(config.OWNER_ID))
+async def check_downloads_command(client, message: Message):
+    m = await message.reply_text("⏳ `Checking downloaded files...`")
+    
+    # Standard music bot directory
+    directory = "./downloads"
+    if not os.path.exists(directory):
+        await m.edit_text("⚠️ `Downloads directory not found!`")
+        return
+        
+    total_files = 0
+    total_size_bytes = 0
+    
+    try:
+        for filename in os.listdir(directory):
+            filepath = os.path.join(directory, filename)
+            # Sirf files ko count karega, sub-folders ko nahi
+            if os.path.isfile(filepath):
+                # Live stream cache files ko ignore karne ke liye
+                if "live_" not in filepath and "index_" not in filepath:
+                    total_files += 1
+                    total_size_bytes += os.path.getsize(filepath)
+                    
+        # Bytes ko MB ya GB me convert karna taaki padhne me aasan ho
+        if total_size_bytes >= (1024 * 1024 * 1024):
+            size_formatted = f"{round(total_size_bytes / (1024 * 1024 * 1024), 2)} GB"
+        else:
+            size_formatted = f"{round(total_size_bytes / (1024 * 1024), 2)} MB"
+            
+        await m.edit_text(
+            f"📁 **Server Storage Status**\n\n"
+            f"🎵 **Total Cached Songs:** `{total_files}`\n"
+            f"💾 **Space Occupied:** `{size_formatted}`\n\n"
+            f"💡 _Tip: Storage clean karne ke liye /cdust ka use karein._"
+        )
+        
+    except Exception as e:
+        await m.edit_text(f"⚠️ **Error occurred:** `{e}`")
