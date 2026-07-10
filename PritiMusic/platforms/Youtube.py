@@ -15,17 +15,18 @@ from youtubesearchpython.__future__ import VideosSearch, Playlist
 DOWNLOAD_DIR = "downloads"
 LOGGER = logging.getLogger(__name__)
 
-# Apixhub API (Primary)
+# 🟢 OneGrab API (NEW PRIMARY)
+ONEGRAB_API_URL = os.environ.get("ONEGRAB_API_URL", "https://api.onegrab.fun")
+ONEGRAB_API_KEY = os.environ.get("ONEGRAB_API_KEY", "fbee25_x8FqJTStnOF5Ry5vGzMXTbR8zmuJ0H29")
+
+# Apixhub API (Secondary Fallback)
 APIXHUB_API_URL = os.getenv("APIXHUB_API_URL", "https://bot.apixhub.fun")
 APIXHUB_API_KEY = os.getenv("APIXHUB_API_KEY", "OijUY78533DPoPnOkwIK7qImQk")
 
-# Worker API (Secondary)
-WORKER_FALLBACK_API_URL = os.getenv("WORKER_FALLBACK_API_URL", "https://youtubenewapi.skybotsdeveloper.workers.dev")
-WORKER_FALLBACK_API_KEY = os.getenv("WORKER_FALLBACK_API_KEY", "itsmesid")
-
-# Shruti API (Tertiary)
+# Shruti API (Tertiary Fallback)
 API_URL = os.environ.get("SHRUTI_API_URL", "https://api.shrutibots.site")
 API_KEY = os.environ.get("SHRUTI_API_KEY", "ShrutiBotsC0WH1GowF2HkGoKv4F3y")
+
 
 def time_to_seconds(time_str):
     stringt = str(time_str)
@@ -36,7 +37,6 @@ def get_safe_filename(title: str, default_id: str) -> str:
         return default_id
     return re.sub(r'[\\/*?:"<>|]', "", title).strip()
 
-# 🟢 THE FIX: Perfect YouTube ID Extractor for all link types
 def extract_video_id(link: str) -> str:
     if "youtu.be/" in link:
         return link.split("youtu.be/")[1].split("?")[0]
@@ -44,7 +44,6 @@ def extract_video_id(link: str) -> str:
         return link.split("v=")[1].split("&")[0]
     return link
 
-# Helper for Safe Async Execution
 async def _async_run(func, *args, **kwargs):
     try:
         loop = asyncio.get_running_loop()
@@ -54,7 +53,54 @@ async def _async_run(func, *args, **kwargs):
 
 # ----------------- DOWNLOADERS -----------------
 
-# 1. Apixhub Downloader (NEW PRIMARY)
+# 1. OneGrab Downloader (PRIMARY)
+async def onegrab_download(video_id: str, download_type: str, title: str = None) -> str:
+    if not ONEGRAB_API_URL or not ONEGRAB_API_KEY:
+        return None
+
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    filename = get_safe_filename(title, f"og_{video_id}")
+    ext = "mp4" if download_type == "video" else "mp3"
+    file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{ext}")
+
+    if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
+        return file_path
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            params = {
+                "url": video_id, 
+                "type": "audio" if download_type == "audio" else "video", 
+                "api_key": ONEGRAB_API_KEY
+            }
+            async with session.get(
+                f"{ONEGRAB_API_URL}/download", 
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=600)
+            ) as resp:
+                if resp.status != 200:
+                    LOGGER.error(f"OneGrab API Error: Status {resp.status}")
+                    return None
+                
+                with open(file_path, "wb") as f:
+                    async for chunk in resp.content.iter_chunked(131072):
+                        f.write(chunk)
+                        
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
+            LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{title}' from OneGrab API!")
+            return file_path
+        else:
+            LOGGER.warning(f"🔴 OneGrab API returned corrupted/empty file for '{title}'. Rejecting it.")
+            return None
+    except Exception as e:
+        LOGGER.error(f"OneGrab API Download Error: {e}")
+        if os.path.exists(file_path):
+            try: os.remove(file_path)
+            except: pass
+        return None
+
+
+# 2. Apixhub Downloader (SECONDARY)
 async def apixhub_download(video_id: str, download_type: str, title: str = None) -> str:
     if not APIXHUB_API_URL or not APIXHUB_API_KEY:
         return None
@@ -94,52 +140,8 @@ async def apixhub_download(video_id: str, download_type: str, title: str = None)
             except: pass
         return None
 
-# Worker Downloader
-async def worker_api_download(video_id: str, download_type: str, title: str = None) -> str:
-    if not WORKER_FALLBACK_API_URL or not WORKER_FALLBACK_API_KEY:
-        return None
 
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    filename = get_safe_filename(title, f"wk_{video_id}")
-    ext = "mp4" if download_type == "video" else "mp3"
-    file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{ext}")
-
-    if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
-        return file_path
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            params = {
-                "url": video_id, 
-                "type": "audio" if download_type == "audio" else "video", 
-                "api_key": WORKER_FALLBACK_API_KEY
-            }
-            async with session.get(
-                f"{WORKER_FALLBACK_API_URL}/download", 
-                params=params,
-                timeout=aiohttp.ClientTimeout(total=600)
-            ) as resp:
-                if resp.status != 200:
-                    LOGGER.error(f"Worker API Error: Status {resp.status}")
-                    return None
-                
-                with open(file_path, "wb") as f:
-                    async for chunk in resp.content.iter_chunked(131072):
-                        f.write(chunk)
-                        
-        if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
-            return file_path
-        else:
-            LOGGER.warning(f"🔴 Worker API returned corrupted/empty file for '{title}'. Rejecting it.")
-            return None
-    except Exception as e:
-        LOGGER.error(f"Worker API Download Error: {e}")
-        if os.path.exists(file_path):
-            try: os.remove(file_path)
-            except: pass
-        return None
-
-# Shruti Downloader
+# 3. Shruti Downloader (TERTIARY)
 async def api_download(video_id: str, download_type: str, title: str = None) -> str:
     if not API_URL or not API_KEY:
         return None
@@ -179,6 +181,7 @@ async def api_download(video_id: str, download_type: str, title: str = None) -> 
             try: os.remove(file_path)
             except: pass
         return None
+
 
 async def ytdl_fallback_download(link: str, download_type: str, title: str = None) -> str:
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -220,6 +223,7 @@ async def ytdl_fallback_download(link: str, download_type: str, title: str = Non
     except Exception as e:
         LOGGER.error(f"yt-dlp fallback error: {str(e)}")
         return None
+
 
 async def spotify_fallback_download(title: str) -> str:
     if not title: return None
@@ -311,6 +315,7 @@ async def soundcloud_fallback_download(title: str) -> str:
         LOGGER.error(f"SoundCloud fallback error: {str(e)}")
     return None
 
+
 async def download_song(link: str, title: str = None) -> str:
     video_id = extract_video_id(link)
     if not video_id or len(video_id) < 3:
@@ -325,19 +330,19 @@ async def download_song(link: str, title: str = None) -> str:
         except Exception:
             pass
 
-    # 1. Primary API (Apixhub)
+    # 1. Primary API (OneGrab)
+    onegrab_result = await onegrab_download(video_id, "audio", title)
+    if onegrab_result: return onegrab_result
+    
+    LOGGER.warning(f"🔴 OneGrab API failed for '{title}'. Hopping to Apixhub API...")
+
+    # 2. Secondary API (Apixhub)
     apixhub_result = await apixhub_download(video_id, "audio", title)
     if apixhub_result: return apixhub_result
-    
-    LOGGER.warning(f"🔴 Apixhub API failed for '{title}'. Hopping to Worker API...")
 
-    # 2. Secondary API (Worker)
-    worker_result = await worker_api_download(video_id, "audio", title)
-    if worker_result: return worker_result
+    LOGGER.warning(f"🔴 Apixhub API failed for '{title}'. Hopping to Shruti API...")
 
-    LOGGER.warning(f"🔴 Worker API failed for '{title}'. Hopping to Shruti API...")
-
-    # 3. Shruti API Fallback
+    # 3. Tertiary API (Shruti)
     api_result = await api_download(video_id, "audio", title)
     if api_result: return api_result
     
@@ -365,6 +370,7 @@ async def download_song(link: str, title: str = None) -> str:
 
     return None
 
+
 async def download_video(link: str, title: str = None) -> str:
     video_id = extract_video_id(link)
     if not video_id or len(video_id) < 3:
@@ -379,19 +385,19 @@ async def download_video(link: str, title: str = None) -> str:
         except:
             pass
 
-    # 1. Primary API (Apixhub)
+    # 1. Primary API (OneGrab)
+    onegrab_result = await onegrab_download(video_id, "video", title)
+    if onegrab_result: return onegrab_result
+
+    LOGGER.warning(f"🔴 OneGrab API failed for '{title}'. Hopping to Apixhub API...")
+
+    # 2. Secondary API (Apixhub)
     apixhub_result = await apixhub_download(video_id, "video", title)
     if apixhub_result: return apixhub_result
 
-    LOGGER.warning(f"🔴 Apixhub API failed for '{title}'. Hopping to Worker API...")
+    LOGGER.warning(f"🔴 Apixhub API failed for '{title}'. Hopping to Shruti API...")
 
-    # 2. Secondary API (Worker)
-    worker_result = await worker_api_download(video_id, "video", title)
-    if worker_result: return worker_result
-
-    LOGGER.warning(f"🔴 Worker API failed for '{title}'. Hopping to Shruti API...")
-
-    # 3. Shruti API Fallback
+    # 3. Tertiary API (Shruti)
     api_result = await api_download(video_id, "video", title)
     if api_result: return api_result
     
