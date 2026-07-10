@@ -2,6 +2,7 @@ import os
 import time
 import asyncio
 import gc  # 🚀 Added this for RAM (Memory) cleanup
+import shutil # 🚀 Added for checking server free space
 import config
 from config import autoclean
 from PritiMusic import LOGGER, app
@@ -204,12 +205,11 @@ async def clean_dust_command(client, message: Message):
         await m.edit_text(f"⚠️ **Error occurred:** `{e}`")
 
 
-# 🚀 9. COMMAND: /downloads (Check total storage usage)
+# 🚀 9. COMMAND: /downloads (Check total storage usage and file list)
 @app.on_message(filters.command("downloads") & filters.user(config.OWNER_ID))
 async def check_downloads_command(client, message: Message):
-    m = await message.reply_text("⏳ `Checking downloaded files...`")
+    m = await message.reply_text("⏳ `Checking server storage and downloaded files...`")
     
-    # Standard music bot directory
     directory = "./downloads"
     if not os.path.exists(directory):
         await m.edit_text("⚠️ `Downloads directory not found!`")
@@ -217,29 +217,64 @@ async def check_downloads_command(client, message: Message):
         
     total_files = 0
     total_size_bytes = 0
+    file_list = []
     
     try:
+        # 1. Fetching file details for the list
         for filename in os.listdir(directory):
             filepath = os.path.join(directory, filename)
-            # Sirf files ko count karega, sub-folders ko nahi
             if os.path.isfile(filepath):
-                # Live stream cache files ko ignore karne ke liye
                 if "live_" not in filepath and "index_" not in filepath:
                     total_files += 1
-                    total_size_bytes += os.path.getsize(filepath)
+                    f_size = os.path.getsize(filepath)
+                    total_size_bytes += f_size
                     
-        # Bytes ko MB ya GB me convert karna taaki padhne me aasan ho
+                    # Convert file size to MB for the list
+                    f_size_mb = round(f_size / (1024 * 1024), 2)
+                    file_list.append(f"🎧 `{filename}` ({f_size_mb} MB)")
+                    
+        # 2. Check Server Free Space using shutil
+        # disk_usage returns total, used, and free space in bytes
+        disk_info = shutil.disk_usage(directory)
+        server_free_gb = round(disk_info.free / (1024 * 1024 * 1024), 2)
+        server_total_gb = round(disk_info.total / (1024 * 1024 * 1024), 2)
+        
+        # 3. Format Total Cached Space
         if total_size_bytes >= (1024 * 1024 * 1024):
             size_formatted = f"{round(total_size_bytes / (1024 * 1024 * 1024), 2)} GB"
         else:
             size_formatted = f"{round(total_size_bytes / (1024 * 1024), 2)} MB"
             
-        await m.edit_text(
+        # 4. Prepare the final message text
+        header_text = (
             f"📁 **Server Storage Status**\n\n"
+            f"💽 **Server Total Space:** `{server_total_gb} GB`\n"
+            f"🟢 **Server Free Space:** `{server_free_gb} GB`\n\n"
             f"🎵 **Total Cached Songs:** `{total_files}`\n"
-            f"💾 **Space Occupied:** `{size_formatted}`\n\n"
-            f"💡 _Tip: Storage clean karne ke liye /cdust ka use karein._"
+            f"💾 **Space Occupied by Bot:** `{size_formatted}`\n\n"
+            f"📑 **Downloaded Music List:**\n"
         )
+        
+        if file_list:
+            songs_text = "\n".join(file_list)
+        else:
+            songs_text = "`No downloaded songs found.`"
+            
+        footer_text = "\n\n💡 _Tip: Storage clean karne ke liye /cdust ka use karein._"
+        
+        full_text = header_text + songs_text + footer_text
+        
+        # 5. Handle Telegram 4096 character limit
+        if len(full_text) > 4000:
+            # Pura text send nahi ho sakta, isliye songs list ko cut karenge
+            allowed_length = 4000 - len(header_text) - len(footer_text) - 50
+            truncated_songs = songs_text[:allowed_length]
+            
+            # Aadha line na kate, isliye aakhri '\n' tak lenge
+            truncated_songs = truncated_songs.rsplit('\n', 1)[0] 
+            full_text = header_text + truncated_songs + "\n\n... `aur baaki files (Message too long)`" + footer_text
+            
+        await m.edit_text(full_text)
         
     except Exception as e:
         await m.edit_text(f"⚠️ **Error occurred:** `{e}`")
