@@ -58,7 +58,8 @@ FOOTER = (
     "\n\n━━━━━━━━━━━━━━━━━━\n"
     "✨ **Start customizing your bot now! join **\n"
     "📢 Update: @betabot_hub\n"
-    "🌚 Support: @betabot_support"
+    "🌚 Support: @betabot_support\n"
+    "😎 OWNER: @Sukoon_s"
 )
 
 try:
@@ -85,7 +86,7 @@ def get_random_start_img():
         if isinstance(START_IMG_URL, list):
             return random.choice(START_IMG_URL)
         return START_IMG_URL
-    return "https://files.catbox.moe/f09yfp.jpg" # Fallback
+    return "https://files.catbox.moe/zbl2i7.jpg" # Fallback
 
 # --- 🔥 HELPER FUNCTION FOR BACKGROUND RESTART ---
 async def delayed_start(bot_token, session_string, wait_time, bot_number):
