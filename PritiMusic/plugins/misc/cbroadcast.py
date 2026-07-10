@@ -1,7 +1,9 @@
 import asyncio
+import time
+import math
 from pyrogram import filters, Client
 from pyrogram.enums import ChatType
-from pyrogram.errors import FloodWait, RPCError, PeerIdInvalid, UserIsBlocked, UserDeactivated, AuthKeyUnregistered
+from pyrogram.errors import FloodWait, RPCError, PeerIdInvalid, UserIsBlocked, UserDeactivated, AuthKeyUnregistered, MessageNotModified
 
 from PritiMusic import app
 from PritiMusic.misc import SUDOERS
@@ -16,6 +18,15 @@ from config import API_ID, API_HASH
 # Global Flag
 IS_CBROADCASTING = False
 
+# Stylish Progress Bar Generator
+def get_progress_bar(current, total, length=15):
+    if total == 0:
+        return "▱" * length + " 0%"
+    percentage = current / total
+    filled_len = int(length * percentage)
+    bar = '▰' * filled_len + '▱' * (length - filled_len)
+    return f"{bar} {percentage * 100:.1f}%"
+
 @app.on_message(filters.command("stopcbroadcast") & SUDOERS)
 async def stop_clone_broadcast(client, message):
     global IS_CBROADCASTING
@@ -23,7 +34,7 @@ async def stop_clone_broadcast(client, message):
         return await message.reply_text("❌ **No Clone Broadcast is currently running.**")
     
     IS_CBROADCASTING = False
-    await message.reply_text("🛑 **Stopping Broadcast...**\nProcess will halt after current bot.")
+    await message.reply_text("🛑 **Stopping Broadcast...**\nProcess will halt after the current bot finishes its queue.")
 
 
 @app.on_message(filters.command("cbroadcast") & SUDOERS)
@@ -80,14 +91,17 @@ async def clone_broadcast_handler(client, message):
         IS_CBROADCASTING = False
         return await status_msg.edit_text("❌ **No Clones Found.**")
 
-    await status_msg.edit_text(f"🚀 **Targeting {total_clones} Clones...**")
-
+    # Tracking Variables
+    processed_clones = 0
     success_clones = 0
     failed_clones = 0
     total_sent = 0
     
     total_targetted_groups = 0
     total_targetted_users = 0
+    
+    last_edit_time = time.time()
+    edit_interval = 4 # Update the message every 4 seconds to avoid FloodWait
 
     # --- MAIN LOOP ---
     for clone in all_clones_data:
@@ -99,6 +113,7 @@ async def clone_broadcast_handler(client, message):
 
         if not token or not bot_id:
             failed_clones += 1
+            processed_clones += 1
             continue
 
         # --- A. COLLECT TARGETS ---
@@ -129,6 +144,7 @@ async def clone_broadcast_handler(client, message):
             except: pass
 
         if not target_ids:
+            processed_clones += 1
             continue
 
         # --- B. SEND MESSAGES ---
@@ -148,13 +164,14 @@ async def clone_broadcast_handler(client, message):
                     await clone_app.get_me()
                 except (AuthKeyUnregistered, UserDeactivated):
                     failed_clones += 1
+                    processed_clones += 1
                     continue
 
                 for chat_id in target_ids:
                     if not IS_CBROADCASTING: break
                     
                     try:
-                        # 🔥 FIX: Forcing Clone App to send the replied media/text natively
+                        # Force Clone App to send natively
                         if message.reply_to_message:
                             rep = message.reply_to_message
                             if rep.photo:
@@ -189,23 +206,43 @@ async def clone_broadcast_handler(client, message):
                         continue
                     except Exception:
                         continue
+                    
+                    # 🚀 LIVE PROGRESS BAR UPDATE CHECK
+                    if time.time() - last_edit_time > edit_interval:
+                        progress_bar = get_progress_bar(processed_clones, total_clones)
+                        live_text = (
+                            f"📡 **Live Clone Broadcast**\n\n"
+                            f"**Progress:**\n`[{progress_bar}]`\n\n"
+                            f"🤖 **Clones Processed:** `{processed_clones}/{total_clones}`\n"
+                            f"📨 **Messages Sent Live:** `{total_sent}`\n"
+                            f"🔄 **Currently Sending via:** `@{username}`\n\n"
+                            f"⚠️ **Failed Tokens:** `{failed_clones}`"
+                        )
+                        try:
+                            await status_msg.edit_text(live_text)
+                            last_edit_time = time.time()
+                        except MessageNotModified:
+                            pass
                 
                 if clone_sent_count > 0:
                     success_clones += 1
                 
         except Exception:
             failed_clones += 1
-            continue
+            
+        processed_clones += 1
 
     # --- FINAL REPORT ---
     IS_CBROADCASTING = False
     
+    final_bar = get_progress_bar(total_clones, total_clones)
     await status_msg.edit_text(
-        f"✅ **Broadcast Completed!**\n\n"
-        f"🤖 **Total Clones:** {total_clones}\n"
-        f"📢 **Active Sending:** {success_clones}\n"
-        f"⚠️ **Failed/Revoked:** {failed_clones}\n"
-        f"📨 **Messages Sent:** {total_sent}\n\n"
-        f"👥 **Total Users:** {total_targetted_users}\n"
-        f"👥 **Total Groups:** {total_targetted_groups}"
+        f"✅ **Clone Broadcast Completed!**\n\n"
+        f"**Final Status:**\n`[{final_bar}]`\n\n"
+        f"🤖 **Total Clones:** `{total_clones}`\n"
+        f"📢 **Active Sending Clones:** `{success_clones}`\n"
+        f"⚠️ **Failed/Revoked Tokens:** `{failed_clones}`\n"
+        f"📨 **Total Messages Sent:** `{total_sent}`\n\n"
+        f"👥 **Total Target Users:** `{total_targetted_users}`\n"
+        f"👥 **Total Target Groups:** `{total_targetted_groups}`"
     )
