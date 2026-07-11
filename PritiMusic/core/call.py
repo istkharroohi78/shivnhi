@@ -9,6 +9,7 @@ from typing import Union
 from pyrogram import Client
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.enums import ParseMode
+from pyrogram.errors import FloodWait  # Added to catch FloodWait specifically
 
 from pytgcalls import PyTgCalls
 from pytgcalls.types import MediaStream, AudioQuality, VideoQuality
@@ -298,7 +299,7 @@ class Call(PyTgCalls):
             for assistant in assistants:
                 try: await self._safe_change_stream(assistant, chat_id, out, is_video, extra_args)
                 except: pass
-        else: raise AssistantErr("Umm")
+        else: raise AssistantErr("Umm\n\n**Need Help Join - @betabot_support**")
         
         if str(db[chat_id][0]["file"]) == str(file_path):
             exis = (playing[0]).get("old_dur")
@@ -368,8 +369,15 @@ class Call(PyTgCalls):
             
         try:
             await self._safe_join_call(assistant_to_join, chat_id, link, video)
+        except FloodWait as e:
+            LOGGER(__name__).warning(f"FloodWait hit! Sleeping for {e.value} seconds before retrying VC join...")
+            await asyncio.sleep(e.value + 1)
+            try:
+                await self._safe_join_call(assistant_to_join, chat_id, link, video)
+            except Exception as err:
+                raise AssistantErr(f"VC Error after retry: {err} - (Please check if Voice Chat is turned on in the group)\n\n**Need Help Join - @betabot_support**")
         except Exception as e: 
-            raise AssistantErr(f"VC Error: {e} - (Please check if Voice Chat is turned on in the group)")
+            raise AssistantErr(f"VC Error: {e} - (Please check if Voice Chat is turned on in the group)\n\n**Need Help Join - @betabot_support**")
         
         await add_active_chat(chat_id)
         await music_on(chat_id)
