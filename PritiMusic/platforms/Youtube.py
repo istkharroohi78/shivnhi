@@ -208,8 +208,9 @@ async def ytdl_fallback_download(link: str, download_type: str, title: str = Non
     if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
         return file_path
 
-    video_format = 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
-    audio_format = 'bestaudio/best/bestvideo+bestaudio'
+    # 🚀 FIX: Extremely flexible format strings to stop "format not available" error
+    video_format = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
+    audio_format = 'bestaudio/best'
     
     ydl_opts = {
         'format': video_format if download_type == "video" else audio_format, 
@@ -618,78 +619,47 @@ class YouTubeAPI:
             LOGGER.error(f"Error in YouTubeAPI.download: {e}")
             return None, False
 
+    # 🚀 FASTEST SEARCH API (Time Limit And Heavy Traffic Search Fallback Removed)
     async def autoplay(self, last_vidid: str, title: str, max_duration: int = None):
         try:
             import random
-            search_query = f"{title} official audio"
+            search_query = f"{title}"
             valid_choices = []
             
             try:
-                search = VideosSearch(search_query, limit=15)
+                search = VideosSearch(search_query, limit=10)
                 result = await search.next()
                 if result and result.get("result"):
                     for res in result["result"]:
                         vidid = str(res.get("id") or "")
-                        if not vidid or vidid == "None" or vidid == last_vidid: continue
+                        
+                        # Skip if it's the exact song currently playing
+                        if not vidid or vidid == "None" or vidid == last_vidid: 
+                            continue
                             
                         dur_str = str(res.get("duration", "0:00"))
                         dur_sec = 0
+                        
                         if dur_str and ":" in dur_str:
                             parts = dur_str.split(":")
                             try:
                                 if len(parts) == 2: dur_sec = int(parts[0]) * 60 + int(parts[1])
                                 elif len(parts) == 3: dur_sec = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-                            except ValueError: pass
+                            except ValueError: 
+                                pass
                                 
-                        if dur_sec < 30: continue
-                        if max_duration and dur_sec > max_duration: continue
-                            
                         valid_choices.append({
                             "vidid": vidid,
                             "title": str(res.get("title", "Unknown Title")).title(),
                             "duration_min": dur_str,
                             "duration_sec": dur_sec
                         })
-            except Exception: pass 
+            except Exception: 
+                pass 
 
-            if not valid_choices:
-                ytdl_opts = {
-                    "quiet": True, 
-                    "extract_flat": True, 
-                    "noplaylist": True,
-                    "cookiefile": "cookies.txt",
-                    "extractor_args": {"youtube": ["player_client=tv,android,web"]},
-                    "http_headers": {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                    }
-                } 
-                ydl = yt_dlp.YoutubeDL(ytdl_opts)
-                
-                r = await _async_run(ydl.extract_info, f"ytsearch10:{search_query}", download=False)
-                if r and "entries" in r:
-                    for entry in r["entries"]:
-                        vidid = entry.get("id")
-                        if not vidid or vidid == last_vidid: continue
-                        
-                        raw_dur = entry.get("duration", 0)
-                        try: dur_sec = int(float(raw_dur)) if raw_dur else 0
-                        except (ValueError, TypeError): dur_sec = 0
-                            
-                        if not dur_sec or dur_sec < 30: continue
-                        if max_duration and dur_sec > max_duration: continue
-                            
-                        m, s = divmod(dur_sec, 60)
-                        h, m = divmod(m, 60)
-                        dur_str = f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
-                        
-                        valid_choices.append({
-                            "vidid": vidid,
-                            "title": str(entry.get("title", "Unknown Title")).title(),
-                            "duration_min": dur_str,
-                            "duration_sec": dur_sec
-                        })
-
-            if valid_choices: return random.choice(valid_choices)
+            if valid_choices: 
+                # Picks from top 5 instant results for smooth autoplay
+                return random.choice(valid_choices[:5])
             return None
             
         except Exception as e:
