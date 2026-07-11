@@ -12,7 +12,7 @@ from pyrogram.types import Message
 from youtubesearchpython.__future__ import VideosSearch, Playlist
 
 # ----------------- CONFIGURATION -----------------
-# Changed to "music_cache" to isolate audio files from .png profile pictures!
+# Isolated audio cache to prevent mixing with profile pictures
 DOWNLOAD_DIR = "music_cache" 
 LOGGER = logging.getLogger(__name__)
 
@@ -34,9 +34,9 @@ def time_to_seconds(time_str):
     return sum(int(x) * 60 ** i for i, x in enumerate(reversed(stringt.split(":"))))
 
 def get_safe_filename(title: str, default_id: str) -> str:
-    if not title:
+    if not title or str(title).strip().lower() == "none":
         return default_id
-    return re.sub(r'[\\/*?:"<>|]', "", title).strip()
+    return re.sub(r'[\\/*?:"<>|]', "", str(title)).strip()
 
 def extract_video_id(link: str) -> str:
     if "youtu.be/" in link:
@@ -47,8 +47,9 @@ def extract_video_id(link: str) -> str:
 
 def clean_title_for_search(title: str) -> str:
     """Removes emojis, hashtags, brackets, and junk words for clean fallback searches."""
-    if not title: return ""
-    clean = re.sub(r'[^\w\s,]', '', title)
+    if not title or str(title).strip().lower() == "none": 
+        return ""
+    clean = re.sub(r'[^\w\s,]', '', str(title))
     clean = re.sub(r'\(.*?\)|\[.*?\]', '', clean)
     clean = re.sub(r'official|video|audio|lyric|hd|hq|song', '', clean, flags=re.IGNORECASE)
     return " ".join(clean.split()).strip()
@@ -68,7 +69,8 @@ async def api_download(video_id: str, download_type: str, title: str = None) -> 
         return None
 
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    filename = get_safe_filename(title, video_id)
+    safe_title = title if title and str(title).strip().lower() != "none" else video_id
+    filename = get_safe_filename(safe_title, video_id)
     ext = "mp4" if download_type == "video" else "mp3"
     file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{ext}")
 
@@ -92,7 +94,7 @@ async def api_download(video_id: str, download_type: str, title: str = None) -> 
                                 f.write(chunk)
                                 
         if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
-            LOGGER.info(f"🟢 FAST-HOP SUCCESS: Downloaded '{title}' from Shruti API!")
+            LOGGER.info(f"🟢 FAST-HOP SUCCESS: Downloaded '{safe_title}' from Shruti API!")
             return file_path
         else:
             if os.path.exists(file_path): os.remove(file_path)
@@ -112,7 +114,8 @@ async def onegrab_download(video_id: str, download_type: str, title: str = None)
         return None
 
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    filename = get_safe_filename(title, f"og_{video_id}")
+    safe_title = title if title and str(title).strip().lower() != "none" else video_id
+    filename = get_safe_filename(safe_title, f"og_{video_id}")
     ext = "mp4" if download_type == "video" else "mp3"
     file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{ext}")
 
@@ -141,7 +144,7 @@ async def onegrab_download(video_id: str, download_type: str, title: str = None)
                                 f.write(chunk)
                                 
         if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
-            LOGGER.info(f"🟢 FAST-HOP SUCCESS: Downloaded '{title}' from OneGrab API!")
+            LOGGER.info(f"🟢 FAST-HOP SUCCESS: Downloaded '{safe_title}' from OneGrab API!")
             return file_path
         else:
             if os.path.exists(file_path): os.remove(file_path)
@@ -161,7 +164,8 @@ async def apixhub_download(video_id: str, download_type: str, title: str = None)
         return None
 
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    filename = get_safe_filename(title, f"apix_{video_id}")
+    safe_title = title if title and str(title).strip().lower() != "none" else video_id
+    filename = get_safe_filename(safe_title, f"apix_{video_id}")
     ext = "mp4" if download_type == "video" else "mp3"
     file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{ext}")
 
@@ -184,7 +188,7 @@ async def apixhub_download(video_id: str, download_type: str, title: str = None)
                                 f.write(chunk)
                                 
         if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
-            LOGGER.info(f"🟢 FAST-HOP SUCCESS: Downloaded '{title}' from Apixhub API!")
+            LOGGER.info(f"🟢 FAST-HOP SUCCESS: Downloaded '{safe_title}' from Apixhub API!")
             return file_path
         else:
             if os.path.exists(file_path): os.remove(file_path)
@@ -201,19 +205,20 @@ async def apixhub_download(video_id: str, download_type: str, title: str = None)
 async def ytdl_fallback_download(link: str, download_type: str, title: str = None) -> str:
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     video_id = extract_video_id(link)
-    filename = get_safe_filename(title, video_id)
+    
+    # 🚀 TITLE BUG FIX: Handle 'None' as a string properly
+    safe_title = title if title and str(title).strip().lower() != "none" else video_id
+    filename = get_safe_filename(safe_title, video_id)
+    
     ext = "mp4" if download_type == "video" else "mp3"
     file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{ext}")
 
     if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
         return file_path
 
-    # 🚀 FIX: Extremely flexible format strings to stop "format not available" error
-    video_format = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
-    audio_format = 'bestaudio/best'
-    
+    # 🚀 THE ULTIMATE FALLBACK: No strict extensions, just give me whatever is best!
     ydl_opts = {
-        'format': video_format if download_type == "video" else audio_format, 
+        'format': 'best' if download_type == "video" else 'bestaudio/best', 
         'outtmpl': file_path,
         'quiet': True,
         'no_warnings': True,
@@ -238,7 +243,7 @@ async def ytdl_fallback_download(link: str, download_type: str, title: str = Non
     try:
         await _async_run(yt_dlp.YoutubeDL(ydl_opts).download, [link])
         if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
-            LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{title}' from yt-dlp!")
+            LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{safe_title}' from yt-dlp!")
             return file_path
         return None
     except Exception as e:
@@ -247,7 +252,8 @@ async def ytdl_fallback_download(link: str, download_type: str, title: str = Non
 
 
 async def soundcloud_fallback_download(title: str) -> str:
-    if not title: return None
+    if not title or str(title).strip().lower() == "none": 
+        return None
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     
     clean_title = clean_title_for_search(title)
@@ -287,7 +293,8 @@ async def download_song(link: str, title: str = None) -> str:
     if not video_id or len(video_id) < 3:
         return None
         
-    if not title:
+    # 🚀 TITLE BUG FIX: Handle 'None' as a string properly
+    if not title or str(title).strip().lower() == "none":
         try:
             search = VideosSearch(video_id, limit=1)
             res = await search.next()
@@ -295,6 +302,10 @@ async def download_song(link: str, title: str = None) -> str:
                 title = res["result"][0]["title"]
         except Exception:
             pass
+            
+    # Default to video_id if title is STILL not found to prevent breaking the flow
+    if not title or str(title).strip().lower() == "none":
+        title = f"Track_{video_id}"
 
     # 1. Primary API
     api_result = await api_download(video_id, "audio", title)
@@ -318,11 +329,10 @@ async def download_song(link: str, title: str = None) -> str:
     yt_result = await ytdl_fallback_download(link, "audio", title)
     if yt_result: return yt_result
     
-    if title:
-        LOGGER.warning(f"🔴 YouTube blocked '{title}'. Hopping to SoundCloud...")
-        # 5. SoundCloud Fallback (Spotify and JioSaavn removed)
-        sc_result = await soundcloud_fallback_download(title)
-        if sc_result: return sc_result
+    # 5. SoundCloud Fallback
+    LOGGER.warning(f"🔴 YouTube blocked '{title}'. Hopping to SoundCloud...")
+    sc_result = await soundcloud_fallback_download(title)
+    if sc_result: return sc_result
 
     return None
 
@@ -332,7 +342,8 @@ async def download_video(link: str, title: str = None) -> str:
     if not video_id or len(video_id) < 3:
         return None
 
-    if not title:
+    # 🚀 TITLE BUG FIX: Handle 'None' as a string properly
+    if not title or str(title).strip().lower() == "none":
         try:
             search = VideosSearch(video_id, limit=1)
             res = await search.next()
@@ -340,6 +351,9 @@ async def download_video(link: str, title: str = None) -> str:
                 title = res["result"][0]["title"]
         except:
             pass
+
+    if not title or str(title).strip().lower() == "none":
+        title = f"Video_{video_id}"
 
     api_result = await api_download(video_id, "video", title)
     if api_result: return api_result
