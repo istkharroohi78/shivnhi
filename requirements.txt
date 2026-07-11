@@ -8,7 +8,7 @@ hachoir
 heroku3
 httpx==0.23.3
 motor
-numpy
+numpy==1.26.4
 opencv-python-headless
 pytz
 pillow==9.5.0
@@ -22,10 +22,10 @@ SafoneAPI
 speedtest-cli
 spotipy
 tgcrypto>=1.2.5
-kurigram==3.0.8b2
+kurigram==2.2.24
 telegraph
 unidecode
 youtube-search
-youtube-search-python
-yt-dlp>=2024.03.10
+youtube-search-python==1.6.6.post3
+yt-dlp==2026.7.6.234510.dev0
 PyGithub==2.3.0
