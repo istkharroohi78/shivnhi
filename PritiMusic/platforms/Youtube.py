@@ -82,6 +82,11 @@ async def onegrab_download(video_id: str, download_type: str, title: str = None)
                     LOGGER.error(f"OneGrab API Error: Status {resp.status}")
                     return None
                 
+                content_type = resp.headers.get("Content-Type", "").lower()
+                if "application/json" in content_type or "text/html" in content_type:
+                    LOGGER.warning(f"🔴 OneGrab API returned JSON/HTML block page for '{title}'. Skipping.")
+                    return None
+                
                 with open(file_path, "wb") as f:
                     async for chunk in resp.content.iter_chunked(131072):
                         f.write(chunk)
@@ -91,6 +96,7 @@ async def onegrab_download(video_id: str, download_type: str, title: str = None)
             return file_path
         else:
             LOGGER.warning(f"🔴 OneGrab API returned corrupted/empty file for '{title}'. Rejecting it.")
+            if os.path.exists(file_path): os.remove(file_path)
             return None
     except Exception as e:
         LOGGER.error(f"OneGrab API Download Error: {e}")
@@ -123,6 +129,11 @@ async def apixhub_download(video_id: str, download_type: str, title: str = None)
                     LOGGER.error(f"Apixhub API Error: Status {resp.status}")
                     return None
                 
+                content_type = resp.headers.get("Content-Type", "").lower()
+                if "application/json" in content_type or "text/html" in content_type:
+                    LOGGER.warning(f"🔴 Apixhub API returned JSON/HTML block page for '{title}'. Skipping.")
+                    return None
+                
                 with open(file_path, "wb") as f:
                     async for chunk in resp.content.iter_chunked(131072):
                         f.write(chunk)
@@ -132,6 +143,7 @@ async def apixhub_download(video_id: str, download_type: str, title: str = None)
             return file_path
         else:
             LOGGER.warning(f"🔴 Apixhub API returned corrupted/empty file for '{title}'. Rejecting it.")
+            if os.path.exists(file_path): os.remove(file_path)
             return None
     except Exception as e:
         LOGGER.error(f"Apixhub API Download Error: {e}")
@@ -165,6 +177,11 @@ async def api_download(video_id: str, download_type: str, title: str = None) -> 
                     LOGGER.error(f"Shruti API Error: Status {resp.status}")
                     return None
                 
+                content_type = resp.headers.get("Content-Type", "").lower()
+                if "application/json" in content_type or "text/html" in content_type:
+                    LOGGER.warning(f"🔴 Shruti API returned JSON/HTML block page for '{title}'. Skipping.")
+                    return None
+                
                 with open(file_path, "wb") as f:
                     async for chunk in resp.content.iter_chunked(131072):
                         f.write(chunk)
@@ -174,6 +191,7 @@ async def api_download(video_id: str, download_type: str, title: str = None) -> 
             return file_path
         else:
             LOGGER.warning(f"🔴 Shruti API returned corrupted/empty file for '{title}'. Rejecting it.")
+            if os.path.exists(file_path): os.remove(file_path)
             return None
     except Exception as e:
         LOGGER.error(f"Shruti API Download Error: {e}")
@@ -201,10 +219,13 @@ async def ytdl_fallback_download(link: str, download_type: str, title: str = Non
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt', 
-        'extractor_args': {'youtube': ['player_client=ios,tv_embedded']}, 
+        'extractor_args': {'youtube': ['player_client=tv,android,web']}, 
         'geo_bypass': True,
         'nocheckcertificate': True,
         'noplaylist': True,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
     }
     
     if download_type == "audio":
@@ -461,7 +482,10 @@ class YouTubeAPI:
                 "extract_flat": True, 
                 "noplaylist": True,
                 "cookiefile": "cookies.txt",
-                "extractor_args": {"youtube": ["player_client=ios,tv_embedded"]} 
+                "extractor_args": {"youtube": ["player_client=tv,android,web"]}, 
+                "http_headers": {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }
             } 
             ydl = yt_dlp.YoutubeDL(ydl_opts)
             search_query = link if "youtube.com" in link or "youtu.be" in link else f"ytsearch1:{link}"
@@ -564,7 +588,10 @@ class YouTubeAPI:
                 "extract_flat": True, 
                 "noplaylist": True,
                 "cookiefile": "cookies.txt",
-                "extractor_args": {"youtube": ["player_client=ios,tv_embedded"]} 
+                "extractor_args": {"youtube": ["player_client=tv,android,web"]},
+                "http_headers": {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }
             }
             ydl = yt_dlp.YoutubeDL(ydl_opts)
             search_query = link if "youtube.com" in link or "youtu.be" in link else f"ytsearch1:{link}"
@@ -596,7 +623,10 @@ class YouTubeAPI:
         ytdl_opts = {
             "quiet": True,
             "cookiefile": "cookies.txt", 
-            "extractor_args": {"youtube": ["player_client=ios,tv_embedded"]},
+            "extractor_args": {"youtube": ["player_client=tv,android,web"]},
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
             "external_downloader": "aria2c",
             "external_downloader_args": [
                 "-x", "16",            
@@ -698,7 +728,10 @@ class YouTubeAPI:
                     "extract_flat": True, 
                     "noplaylist": True,
                     "cookiefile": "cookies.txt",
-                    "extractor_args": {"youtube": ["player_client=ios,tv_embedded"]} 
+                    "extractor_args": {"youtube": ["player_client=tv,android,web"]},
+                    "http_headers": {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    }
                 } 
                 ydl = yt_dlp.YoutubeDL(ytdl_opts)
                 
