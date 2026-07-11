@@ -1,4 +1,4 @@
-FROM nikolaik/python-nodejs:python3.10-nodejs20
+FROM nikolaik/python-nodejs:python3.11-nodejs20
 
 RUN apt-get update && \
     apt-get install -y ffmpeg && \
@@ -7,6 +7,7 @@ RUN apt-get update && \
 COPY . /app/
 WORKDIR /app/
 
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir --upgrade pip setuptools && \
+    pip3 install --no-cache-dir -r requirements.txt
 
 CMD ["bash", "start"]
