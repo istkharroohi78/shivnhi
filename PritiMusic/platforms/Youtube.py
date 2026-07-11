@@ -12,20 +12,21 @@ from pyrogram.types import Message
 from youtubesearchpython.__future__ import VideosSearch, Playlist
 
 # ----------------- CONFIGURATION -----------------
-DOWNLOAD_DIR = "downloads"
+# Changed to "music_cache" to isolate audio files from .png profile pictures!
+DOWNLOAD_DIR = "music_cache" 
 LOGGER = logging.getLogger(__name__)
 
-# 🟢 OneGrab API (Secondary)
+# Shruti API (NEW PRIMARY - FASTEST)
+API_URL = os.environ.get("SHRUTI_API_URL", "https://api.shrutibots.site")
+API_KEY = os.environ.get("SHRUTI_API_KEY", "ShrutiBotsC0WH1GowF2HkGoKv4F3y")
+
+# OneGrab API (Secondary)
 ONEGRAB_API_URL = os.environ.get("ONEGRAB_API_URL", "https://api.onegrab.fun")
 ONEGRAB_API_KEY = os.environ.get("ONEGRAB_API_KEY", "fbee25_x8FqJTStnOF5Ry5vGzMXTbR8zmuJ0H29")
 
 # Apixhub API (Tertiary Fallback)
 APIXHUB_API_URL = os.getenv("APIXHUB_API_URL", "https://bot.apixhub.fun")
 APIXHUB_API_KEY = os.getenv("APIXHUB_API_KEY", "OijUY78533DPoPnOkwIK7qImQk")
-
-# Shruti API (NEW PRIMARY - FASTEST)
-API_URL = os.environ.get("SHRUTI_API_URL", "https://api.shrutibots.site")
-API_KEY = os.environ.get("SHRUTI_API_KEY", "ShrutiBotsC0WH1GowF2HkGoKv4F3y")
 
 
 def time_to_seconds(time_str):
@@ -43,6 +44,14 @@ def extract_video_id(link: str) -> str:
     elif "v=" in link:
         return link.split("v=")[1].split("&")[0]
     return link
+
+def clean_title_for_search(title: str) -> str:
+    """Removes emojis, hashtags, brackets, and junk words for clean fallback searches."""
+    if not title: return ""
+    clean = re.sub(r'[^\w\s,]', '', title)
+    clean = re.sub(r'\(.*?\)|\[.*?\]', '', clean)
+    clean = re.sub(r'official|video|audio|lyric|hd|hq|song', '', clean, flags=re.IGNORECASE)
+    return " ".join(clean.split()).strip()
 
 async def _async_run(func, *args, **kwargs):
     try:
@@ -73,22 +82,15 @@ async def api_download(video_id: str, download_type: str, title: str = None) -> 
         async with aiohttp.ClientSession(headers=headers) as session:
             async with session.get(
                 f"{API_URL}/download",
-                params={"url": yt_url, "type": "audio" if download_type == "audio" else "video", "api_key": API_KEY},
-                timeout=aiohttp.ClientTimeout(total=600)
+                params={"url": yt_url, "type": "audio" if download_type == "audio" else "video", "api_key": API_KEY}
             ) as resp:
-                if resp.status != 200:
-                    LOGGER.error(f"Shruti API Error: Status {resp.status}. Skipping instantly.")
-                    return None
-                
-                content_type = resp.headers.get("Content-Type", "").lower()
-                if "application/json" in content_type or "text/html" in content_type:
-                    LOGGER.warning(f"🔴 Shruti API returned block page. Skipping instantly.")
-                    return None
-                
-                with open(file_path, "wb") as f:
-                    async for chunk in resp.content.iter_chunked(131072):
-                        f.write(chunk)
-                        
+                if resp.status == 200:
+                    content_type = resp.headers.get("Content-Type", "").lower()
+                    if "application/json" not in content_type and "text/html" not in content_type:
+                        with open(file_path, "wb") as f:
+                            async for chunk in resp.content.iter_chunked(131072):
+                                f.write(chunk)
+                                
         if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
             LOGGER.info(f"🟢 FAST-HOP SUCCESS: Downloaded '{title}' from Shruti API!")
             return file_path
@@ -129,23 +131,15 @@ async def onegrab_download(video_id: str, download_type: str, title: str = None)
             }
             async with session.get(
                 f"{ONEGRAB_API_URL}/download", 
-                params=params,
-                timeout=aiohttp.ClientTimeout(total=600)
+                params=params
             ) as resp:
-                
-                if resp.status != 200:
-                    LOGGER.error(f"OneGrab API Error: Status {resp.status}. Skipping instantly.")
-                    return None
-                
-                content_type = resp.headers.get("Content-Type", "").lower()
-                if "application/json" in content_type or "text/html" in content_type:
-                    LOGGER.warning(f"🔴 OneGrab API returned block page. Skipping instantly.")
-                    return None
-                
-                with open(file_path, "wb") as f:
-                    async for chunk in resp.content.iter_chunked(131072):
-                        f.write(chunk)
-                        
+                if resp.status == 200:
+                    content_type = resp.headers.get("Content-Type", "").lower()
+                    if "application/json" not in content_type and "text/html" not in content_type:
+                        with open(file_path, "wb") as f:
+                            async for chunk in resp.content.iter_chunked(131072):
+                                f.write(chunk)
+                                
         if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
             LOGGER.info(f"🟢 FAST-HOP SUCCESS: Downloaded '{title}' from OneGrab API!")
             return file_path
@@ -181,20 +175,14 @@ async def apixhub_download(video_id: str, download_type: str, title: str = None)
             endpoint = "streamvideo" if download_type == "video" else "streamaudio"
             url = f"{APIXHUB_API_URL}/{endpoint}/{video_id}?key={APIXHUB_API_KEY}"
             
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=600)) as resp:
-                if resp.status != 200:
-                    LOGGER.error(f"Apixhub API Error: Status {resp.status}. Skipping instantly.")
-                    return None
-                
-                content_type = resp.headers.get("Content-Type", "").lower()
-                if "application/json" in content_type or "text/html" in content_type:
-                    LOGGER.warning(f"🔴 Apixhub API returned block page. Skipping instantly.")
-                    return None
-                
-                with open(file_path, "wb") as f:
-                    async for chunk in resp.content.iter_chunked(131072):
-                        f.write(chunk)
-                        
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    content_type = resp.headers.get("Content-Type", "").lower()
+                    if "application/json" not in content_type and "text/html" not in content_type:
+                        with open(file_path, "wb") as f:
+                            async for chunk in resp.content.iter_chunked(131072):
+                                f.write(chunk)
+                                
         if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
             LOGGER.info(f"🟢 FAST-HOP SUCCESS: Downloaded '{title}' from Apixhub API!")
             return file_path
@@ -220,10 +208,11 @@ async def ytdl_fallback_download(link: str, download_type: str, title: str = Non
     if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
         return file_path
 
-    video_format = 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+    video_format = 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
+    audio_format = 'bestaudio/best/bestvideo+bestaudio'
     
     ydl_opts = {
-        'format': video_format if download_type == "video" else 'bestaudio/best', 
+        'format': video_format if download_type == "video" else audio_format, 
         'outtmpl': file_path,
         'quiet': True,
         'no_warnings': True,
@@ -232,6 +221,7 @@ async def ytdl_fallback_download(link: str, download_type: str, title: str = Non
         'geo_bypass': True,
         'nocheckcertificate': True,
         'noplaylist': True,
+        'ignoreerrors': True,
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
@@ -255,71 +245,13 @@ async def ytdl_fallback_download(link: str, download_type: str, title: str = Non
         return None
 
 
-async def spotify_fallback_download(title: str) -> str:
-    if not title: return None
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    
-    clean_title = re.sub(r'\(.*?\)|\[.*?\]|official|video|audio|lyric', '', title, flags=re.IGNORECASE).strip()
-    filename = get_safe_filename(clean_title, f"sp_{int(time.time())}")
-    file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.mp3")
-
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
-            api_url = f"https://api.spotifydown.com/search?q={clean_title}" 
-            async with session.get(api_url) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get("success") and data.get("tracks"):
-                        best_track_url = data["tracks"][0].get("downloadUrl") 
-                        if best_track_url:
-                            async with session.get(best_track_url) as song_resp:
-                                if song_resp.status == 200:
-                                    with open(file_path, "wb") as f:
-                                        async for chunk in song_resp.content.iter_chunked(131072):
-                                            f.write(chunk)
-                                    if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
-                                        LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{clean_title}' from Spotify!")
-                                        return file_path
-    except Exception as e:
-        LOGGER.error(f"Spotify fallback error: {str(e)}")
-    return None
-
-
-async def jiosaavn_fallback_download(title: str) -> str:
-    if not title: return None
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    
-    clean_title = re.sub(r'\(.*?\)|\[.*?\]|official|video|audio|lyric', '', title, flags=re.IGNORECASE).strip()
-    filename = get_safe_filename(clean_title, f"js_{int(time.time())}")
-    file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.mp3")
-
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
-            async with session.get(f"{getattr(config, 'JIOSAAVN_API', 'https://saavn.dev/api/search/songs?query=')}{clean_title}") as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get("success") and data.get("data", {}).get("results"):
-                        song_data = data["data"]["results"][0]
-                        download_urls = song_data.get("downloadUrl", [])
-                        if download_urls:
-                            best_url = download_urls[-1]["url"]
-                            async with session.get(best_url) as song_resp:
-                                if song_resp.status == 200:
-                                    with open(file_path, "wb") as f:
-                                        async for chunk in song_resp.content.iter_chunked(131072):
-                                            f.write(chunk)
-                                    if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
-                                        LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{clean_title}' from JioSaavn!")
-                                        return file_path
-    except Exception as e:
-        LOGGER.error(f"JioSaavn fallback error: {str(e)}")
-    return None
-
-
 async def soundcloud_fallback_download(title: str) -> str:
     if not title: return None
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    clean_title = re.sub(r'\(.*?\)|\[.*?\]|official|video|audio|lyric', '', title, flags=re.IGNORECASE).strip()
+    
+    clean_title = clean_title_for_search(title)
+    if not clean_title: return None
+    
     filename = get_safe_filename(clean_title, f"sc_{int(time.time())}")
     file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.mp3")
 
@@ -329,6 +261,7 @@ async def soundcloud_fallback_download(title: str) -> str:
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
+        'ignoreerrors': True,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -362,41 +295,31 @@ async def download_song(link: str, title: str = None) -> str:
         except Exception:
             pass
 
-    # 1. Primary API (Shruti / Worker API - FASTEST)
+    # 1. Primary API
     api_result = await api_download(video_id, "audio", title)
     if api_result: return api_result
     
     LOGGER.warning(f"🔴 Shruti API failed for '{title}'. Hopping to OneGrab API...")
 
-    # 2. Secondary API (OneGrab)
+    # 2. Secondary API
     onegrab_result = await onegrab_download(video_id, "audio", title)
     if onegrab_result: return onegrab_result
     
     LOGGER.warning(f"🔴 OneGrab API failed for '{title}'. Hopping to Apixhub API...")
 
-    # 3. Tertiary API (Apixhub)
+    # 3. Tertiary API
     apixhub_result = await apixhub_download(video_id, "audio", title)
     if apixhub_result: return apixhub_result
 
     LOGGER.warning(f"🔴 Apixhub API failed for '{title}'. Hopping to yt-dlp...")
 
-    # 4. yt-dlp Fallback (Direct Download)
+    # 4. yt-dlp Fallback
     yt_result = await ytdl_fallback_download(link, "audio", title)
     if yt_result: return yt_result
     
     if title:
-        LOGGER.warning(f"🔴 YouTube blocked '{title}'. Hopping to Spotify...")
-        # 5. Spotify Fallback
-        sp_result = await spotify_fallback_download(title)
-        if sp_result: return sp_result
-
-        LOGGER.warning(f"🔴 Spotify failed. Hopping to JioSaavn...")
-        # 6. JioSaavn Fallback
-        js_result = await jiosaavn_fallback_download(title)
-        if js_result: return js_result
-
-        LOGGER.warning(f"🔴 JioSaavn failed. Hopping to SoundCloud...")
-        # 7. SoundCloud Fallback
+        LOGGER.warning(f"🔴 YouTube blocked '{title}'. Hopping to SoundCloud...")
+        # 5. SoundCloud Fallback (Spotify and JioSaavn removed)
         sc_result = await soundcloud_fallback_download(title)
         if sc_result: return sc_result
 
@@ -417,25 +340,21 @@ async def download_video(link: str, title: str = None) -> str:
         except:
             pass
 
-    # 1. Primary API (Shruti / Worker API - FASTEST)
     api_result = await api_download(video_id, "video", title)
     if api_result: return api_result
     
     LOGGER.warning(f"🔴 Shruti API failed for '{title}'. Hopping to OneGrab API...")
 
-    # 2. Secondary API (OneGrab)
     onegrab_result = await onegrab_download(video_id, "video", title)
     if onegrab_result: return onegrab_result
 
     LOGGER.warning(f"🔴 OneGrab API failed for '{title}'. Hopping to Apixhub API...")
 
-    # 3. Tertiary API (Apixhub)
     apixhub_result = await apixhub_download(video_id, "video", title)
     if apixhub_result: return apixhub_result
 
     LOGGER.warning(f"🔴 Apixhub API failed for '{title}'. Hopping to yt-dlp...")
 
-    # 4. yt-dlp Fallback (Direct Download)
     return await ytdl_fallback_download(link, "video", title)
 
 
