@@ -66,44 +66,65 @@ async def onegrab_download(video_id: str, download_type: str, title: str = None)
     if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
         return file_path
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            params = {
-                "url": video_id, 
-                "type": "audio" if download_type == "audio" else "video", 
-                "api_key": ONEGRAB_API_KEY
-            }
-            async with session.get(
-                f"{ONEGRAB_API_URL}/download", 
-                params=params,
-                timeout=aiohttp.ClientTimeout(total=600)
-            ) as resp:
-                if resp.status != 200:
-                    LOGGER.error(f"OneGrab API Error: Status {resp.status}")
-                    return None
+    yt_url = f"https://www.youtube.com/watch?v={video_id}"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+
+    # 🔄 Smart Retry Logic (Max 2 Attempts)
+    for attempt in range(2):
+        try:
+            async with aiohttp.ClientSession(headers=headers) as session:
+                params = {
+                    "url": yt_url, 
+                    "type": "audio" if download_type == "audio" else "video", 
+                    "api_key": ONEGRAB_API_KEY
+                }
+                async with session.get(
+                    f"{ONEGRAB_API_URL}/download", 
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=900)
+                ) as resp:
+                    
+                    # Agar 502/503 aata hai, toh server cache kar raha hoga, 3 sec ruk ke wapas try karo
+                    if resp.status in [502, 503, 504, 500]:
+                        if attempt == 0:
+                            LOGGER.warning(f"⏳ OneGrab gave Status {resp.status} for '{title}'. Retrying in 3s (API might have cached it)...")
+                            await asyncio.sleep(3)
+                            continue
+                        else:
+                            LOGGER.error(f"🔴 OneGrab API Error: Status {resp.status} after 2 attempts.")
+                            return None
+
+                    if resp.status != 200:
+                        LOGGER.error(f"OneGrab API Error: Status {resp.status}")
+                        return None
+                    
+                    content_type = resp.headers.get("Content-Type", "").lower()
+                    if "application/json" in content_type or "text/html" in content_type:
+                        LOGGER.warning(f"🔴 OneGrab API returned JSON/HTML block page for '{title}'. Skipping.")
+                        return None
+                    
+                    with open(file_path, "wb") as f:
+                        async for chunk in resp.content.iter_chunked(131072):
+                            f.write(chunk)
+                            
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
+                LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{title}' from OneGrab API!")
+                return file_path
+            else:
+                LOGGER.warning(f"🔴 OneGrab API returned corrupted/empty file for '{title}'. Rejecting it.")
+                if os.path.exists(file_path): os.remove(file_path)
+                return None
                 
-                content_type = resp.headers.get("Content-Type", "").lower()
-                if "application/json" in content_type or "text/html" in content_type:
-                    LOGGER.warning(f"🔴 OneGrab API returned JSON/HTML block page for '{title}'. Skipping.")
-                    return None
-                
-                with open(file_path, "wb") as f:
-                    async for chunk in resp.content.iter_chunked(131072):
-                        f.write(chunk)
-                        
-        if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
-            LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{title}' from OneGrab API!")
-            return file_path
-        else:
-            LOGGER.warning(f"🔴 OneGrab API returned corrupted/empty file for '{title}'. Rejecting it.")
-            if os.path.exists(file_path): os.remove(file_path)
+        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+            if attempt == 0:
+                LOGGER.warning(f"⏳ OneGrab API Timeout/Connection Error. Retrying in 3s...")
+                await asyncio.sleep(3)
+                continue
+            LOGGER.error(f"OneGrab API Download Error: {e}")
+            if os.path.exists(file_path):
+                try: os.remove(file_path)
+                except: pass
             return None
-    except Exception as e:
-        LOGGER.error(f"OneGrab API Download Error: {e}")
-        if os.path.exists(file_path):
-            try: os.remove(file_path)
-            except: pass
-        return None
 
 
 # 2. Apixhub Downloader (SECONDARY)
@@ -119,38 +140,57 @@ async def apixhub_download(video_id: str, download_type: str, title: str = None)
     if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
         return file_path
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            endpoint = "streamvideo" if download_type == "video" else "streamaudio"
-            url = f"{APIXHUB_API_URL}/{endpoint}/{video_id}?key={APIXHUB_API_KEY}"
-            
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=600)) as resp:
-                if resp.status != 200:
-                    LOGGER.error(f"Apixhub API Error: Status {resp.status}")
-                    return None
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+
+    # 🔄 Smart Retry Logic (Max 2 Attempts)
+    for attempt in range(2):
+        try:
+            async with aiohttp.ClientSession(headers=headers) as session:
+                endpoint = "streamvideo" if download_type == "video" else "streamaudio"
+                url = f"{APIXHUB_API_URL}/{endpoint}/{video_id}?key={APIXHUB_API_KEY}"
                 
-                content_type = resp.headers.get("Content-Type", "").lower()
-                if "application/json" in content_type or "text/html" in content_type:
-                    LOGGER.warning(f"🔴 Apixhub API returned JSON/HTML block page for '{title}'. Skipping.")
-                    return None
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=900)) as resp:
+                    
+                    if resp.status in [502, 503, 504, 500]:
+                        if attempt == 0:
+                            LOGGER.warning(f"⏳ Apixhub gave Status {resp.status} for '{title}'. Retrying in 3s...")
+                            await asyncio.sleep(3)
+                            continue
+                        else:
+                            LOGGER.error(f"🔴 Apixhub API Error: Status {resp.status} after 2 attempts.")
+                            return None
+
+                    if resp.status != 200:
+                        LOGGER.error(f"Apixhub API Error: Status {resp.status}")
+                        return None
+                    
+                    content_type = resp.headers.get("Content-Type", "").lower()
+                    if "application/json" in content_type or "text/html" in content_type:
+                        LOGGER.warning(f"🔴 Apixhub API returned JSON/HTML block page for '{title}'. Skipping.")
+                        return None
+                    
+                    with open(file_path, "wb") as f:
+                        async for chunk in resp.content.iter_chunked(131072):
+                            f.write(chunk)
+                            
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
+                LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{title}' from Apixhub API!")
+                return file_path
+            else:
+                LOGGER.warning(f"🔴 Apixhub API returned corrupted/empty file for '{title}'. Rejecting it.")
+                if os.path.exists(file_path): os.remove(file_path)
+                return None
                 
-                with open(file_path, "wb") as f:
-                    async for chunk in resp.content.iter_chunked(131072):
-                        f.write(chunk)
-                        
-        if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
-            LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{title}' from Apixhub API!")
-            return file_path
-        else:
-            LOGGER.warning(f"🔴 Apixhub API returned corrupted/empty file for '{title}'. Rejecting it.")
-            if os.path.exists(file_path): os.remove(file_path)
+        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+            if attempt == 0:
+                LOGGER.warning(f"⏳ Apixhub API Timeout/Connection Error. Retrying in 3s...")
+                await asyncio.sleep(3)
+                continue
+            LOGGER.error(f"Apixhub API Download Error: {e}")
+            if os.path.exists(file_path):
+                try: os.remove(file_path)
+                except: pass
             return None
-    except Exception as e:
-        LOGGER.error(f"Apixhub API Download Error: {e}")
-        if os.path.exists(file_path):
-            try: os.remove(file_path)
-            except: pass
-        return None
 
 
 # 3. Shruti Downloader (TERTIARY)
@@ -166,39 +206,59 @@ async def api_download(video_id: str, download_type: str, title: str = None) -> 
     if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
         return file_path
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{API_URL}/download",
-                params={"url": video_id, "type": "audio" if download_type == "audio" else "video", "api_key": API_KEY},
-                timeout=aiohttp.ClientTimeout(total=600)
-            ) as resp:
-                if resp.status != 200:
-                    LOGGER.error(f"Shruti API Error: Status {resp.status}")
-                    return None
+    yt_url = f"https://www.youtube.com/watch?v={video_id}"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+
+    # 🔄 Smart Retry Logic (Max 2 Attempts)
+    for attempt in range(2):
+        try:
+            async with aiohttp.ClientSession(headers=headers) as session:
+                async with session.get(
+                    f"{API_URL}/download",
+                    params={"url": yt_url, "type": "audio" if download_type == "audio" else "video", "api_key": API_KEY},
+                    timeout=aiohttp.ClientTimeout(total=900)
+                ) as resp:
+                    
+                    if resp.status in [502, 503, 504, 500]:
+                        if attempt == 0:
+                            LOGGER.warning(f"⏳ Shruti API gave Status {resp.status} for '{title}'. Retrying in 3s...")
+                            await asyncio.sleep(3)
+                            continue
+                        else:
+                            LOGGER.error(f"🔴 Shruti API Error: Status {resp.status} after 2 attempts.")
+                            return None
+
+                    if resp.status != 200:
+                        LOGGER.error(f"Shruti API Error: Status {resp.status}")
+                        return None
+                    
+                    content_type = resp.headers.get("Content-Type", "").lower()
+                    if "application/json" in content_type or "text/html" in content_type:
+                        LOGGER.warning(f"🔴 Shruti API returned JSON/HTML block page for '{title}'. Skipping.")
+                        return None
+                    
+                    with open(file_path, "wb") as f:
+                        async for chunk in resp.content.iter_chunked(131072):
+                            f.write(chunk)
+                            
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
+                LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{title}' from Shruti API!")
+                return file_path
+            else:
+                LOGGER.warning(f"🔴 Shruti API returned corrupted/empty file for '{title}'. Rejecting it.")
+                if os.path.exists(file_path): os.remove(file_path)
+                return None
                 
-                content_type = resp.headers.get("Content-Type", "").lower()
-                if "application/json" in content_type or "text/html" in content_type:
-                    LOGGER.warning(f"🔴 Shruti API returned JSON/HTML block page for '{title}'. Skipping.")
-                    return None
-                
-                with open(file_path, "wb") as f:
-                    async for chunk in resp.content.iter_chunked(131072):
-                        f.write(chunk)
-                        
-        if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
-            LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{title}' from Shruti API!")
-            return file_path
-        else:
-            LOGGER.warning(f"🔴 Shruti API returned corrupted/empty file for '{title}'. Rejecting it.")
-            if os.path.exists(file_path): os.remove(file_path)
+        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+            if attempt == 0:
+                LOGGER.warning(f"⏳ Shruti API Timeout/Connection Error. Retrying in 3s...")
+                await asyncio.sleep(3)
+                continue
+            LOGGER.error(f"Shruti API Download Error: {e}")
+            if os.path.exists(file_path):
+                try: os.remove(file_path)
+                except: pass
             return None
-    except Exception as e:
-        LOGGER.error(f"Shruti API Download Error: {e}")
-        if os.path.exists(file_path):
-            try: os.remove(file_path)
-            except: pass
-        return None
 
 
 async def ytdl_fallback_download(link: str, download_type: str, title: str = None) -> str:
