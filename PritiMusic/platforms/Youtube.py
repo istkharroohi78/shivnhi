@@ -5,24 +5,32 @@ import time
 import yt_dlp
 import aiohttp
 import logging
-import config  
+import random
 from typing import Union
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
 from youtubesearchpython.__future__ import VideosSearch, Playlist
+import config
 
 # ----------------- CONFIGURATION -----------------
 # Isolated audio cache to prevent mixing with profile pictures
-DOWNLOAD_DIR = "music_cache" 
+DOWNLOAD_DIR = "music_cache"
 LOGGER = logging.getLogger(__name__)
 
 # Shruti API (NEW PRIMARY - FASTEST)
 API_URL = os.environ.get("SHRUTI_API_URL", "https://api.shrutibots.site")
 API_KEY = os.environ.get("SHRUTI_API_KEY", "ShrutiBotsC0WH1GowF2HkGoKv4F3y")
 
-# OneGrab API (Secondary)
+# OneGrab API (Secondary) - Multiple Keys Setup (Method 1)
 ONEGRAB_API_URL = os.environ.get("ONEGRAB_API_URL", "https://api.onegrab.fun")
-ONEGRAB_API_KEY = os.environ.get("ONEGRAB_API_KEY", "fbee25_x8FqJTStnOF5Ry5vGzMXTbR8zmuJ0H29")
+
+# Provide all 3 keys here. If an env variable is missing, it falls back to the default value you provide.
+ONEGRAB_API_KEYS = [
+    os.environ.get("ONEGRAB_API_KEY_1", "0b168a_I21sJa-aeWzx30ubnZOrbSmjY5eST1ID"),
+    os.environ.get("ONEGRAB_API_KEY_2", "c93415_Qc6z38kFH52j38qSF4MShLaojVL1JOB5"), # <-- UPDATE THIS
+    os.environ.get("ONEGRAB_API_KEY_3", "be7ccd_J_G_4M4LlNUSRbm9YuyhGKXoERPC3_1H")  # <-- UPDATE THIS
+]
+
 
 # Apixhub API (Tertiary Fallback)
 APIXHUB_API_URL = os.getenv("APIXHUB_API_URL", "https://bot.apixhub.fun")
@@ -110,7 +118,10 @@ async def api_download(video_id: str, download_type: str, title: str = None) -> 
 
 # 2. OneGrab Downloader (SECONDARY)
 async def onegrab_download(video_id: str, download_type: str, title: str = None) -> str:
-    if not ONEGRAB_API_URL or not ONEGRAB_API_KEY:
+    # Get a random key from the list for this request
+    current_key = random.choice(ONEGRAB_API_KEYS)
+    
+    if not ONEGRAB_API_URL or not current_key:
         return None
 
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -130,7 +141,7 @@ async def onegrab_download(video_id: str, download_type: str, title: str = None)
             params = {
                 "url": yt_url, 
                 "type": "audio" if download_type == "audio" else "video", 
-                "api_key": ONEGRAB_API_KEY
+                "api_key": current_key # Using the randomly selected key
             }
             async with session.get(
                 f"{ONEGRAB_API_URL}/download", 
@@ -636,7 +647,6 @@ class YouTubeAPI:
     # 🚀 FASTEST SEARCH API (Time Limit And Heavy Traffic Search Fallback Removed)
     async def autoplay(self, last_vidid: str, title: str, max_duration: int = None):
         try:
-            import random
             search_query = f"{title}"
             valid_choices = []
             
