@@ -21,16 +21,13 @@ LOGGER = logging.getLogger(__name__)
 API_URL = os.environ.get("SHRUTI_API_URL", "https://api.shrutibots.site")
 API_KEY = os.environ.get("SHRUTI_API_KEY", "ShrutiBotsC0WH1GowF2HkGoKv4F3y")
 
-# OneGrab API (Secondary) - Multiple Keys Setup (Method 1)
+# OneGrab API (Secondary) - Multiple Keys Setup
 ONEGRAB_API_URL = os.environ.get("ONEGRAB_API_URL", "https://api.onegrab.fun")
-
-# Provide all 3 keys here. If an env variable is missing, it falls back to the default value you provide.
 ONEGRAB_API_KEYS = [
     os.environ.get("ONEGRAB_API_KEY_1", "0b168a_I21sJa-aeWzx30ubnZOrbSmjY5eST1ID"),
     os.environ.get("ONEGRAB_API_KEY_2", "c93415_Qc6z38kFH52j38qSF4MShLaojVL1JOB5"), # <-- UPDATE THIS
     os.environ.get("ONEGRAB_API_KEY_3", "be7ccd_J_G_4M4LlNUSRbm9YuyhGKXoERPC3_1H")  # <-- UPDATE THIS
 ]
-
 
 # Apixhub API (Tertiary Fallback)
 APIXHUB_API_URL = os.getenv("APIXHUB_API_URL", "https://bot.apixhub.fun")
@@ -54,12 +51,13 @@ def extract_video_id(link: str) -> str:
     return link
 
 def clean_title_for_search(title: str) -> str:
-    """Removes emojis, hashtags, brackets, and junk words for clean fallback searches."""
+    """Smart Cleaner: Removes junk words AND Episode mentions to ensure Non-Stop playback via SoundCloud"""
     if not title or str(title).strip().lower() == "none": 
         return ""
     clean = re.sub(r'[^\w\s,]', '', str(title))
     clean = re.sub(r'\(.*?\)|\[.*?\]', '', clean)
-    clean = re.sub(r'official|video|audio|lyric|hd|hq|song', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'episode\s*\d+', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'official|video|audio|lyric|hd|hq|song|ary digital|hum tv|eng sub', '', clean, flags=re.IGNORECASE)
     return " ".join(clean.split()).strip()
 
 async def _async_run(func, *args, **kwargs):
@@ -71,11 +69,8 @@ async def _async_run(func, *args, **kwargs):
 
 # ----------------- DOWNLOADERS -----------------
 
-# 1. Shruti Downloader (PRIMARY - FASTEST)
 async def api_download(video_id: str, download_type: str, title: str = None) -> str:
-    if not API_URL or not API_KEY:
-        return None
-
+    if not API_URL or not API_KEY: return None
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     safe_title = title if title and str(title).strip().lower() != "none" else video_id
     filename = get_safe_filename(safe_title, video_id)
@@ -87,43 +82,29 @@ async def api_download(video_id: str, download_type: str, title: str = None) -> 
 
     yt_url = f"https://www.youtube.com/watch?v={video_id}"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-
     try:
         async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(
-                f"{API_URL}/download",
-                params={"url": yt_url, "type": "audio" if download_type == "audio" else "video", "api_key": API_KEY}
-            ) as resp:
+            async with session.get(f"{API_URL}/download", params={"url": yt_url, "type": "audio" if download_type == "audio" else "video", "api_key": API_KEY}) as resp:
                 if resp.status == 200:
                     content_type = resp.headers.get("Content-Type", "").lower()
                     if "application/json" not in content_type and "text/html" not in content_type:
                         with open(file_path, "wb") as f:
                             async for chunk in resp.content.iter_chunked(131072):
                                 f.write(chunk)
-                                
         if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
             LOGGER.info(f"🟢 FAST-HOP SUCCESS: Downloaded '{safe_title}' from Shruti API!")
             return file_path
-        else:
-            if os.path.exists(file_path): os.remove(file_path)
-            return None
-            
     except Exception as e:
         LOGGER.error(f"Shruti API Failed: {e}. Skipping...")
-        if os.path.exists(file_path):
-            try: os.remove(file_path)
-            except: pass
-        return None
+        
+    if os.path.exists(file_path): 
+        try: os.remove(file_path)
+        except: pass
+    return None
 
-
-# 2. OneGrab Downloader (SECONDARY)
 async def onegrab_download(video_id: str, download_type: str, title: str = None) -> str:
-    # Get a random key from the list for this request
     current_key = random.choice(ONEGRAB_API_KEYS)
-    
-    if not ONEGRAB_API_URL or not current_key:
-        return None
-
+    if not ONEGRAB_API_URL or not current_key: return None
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     safe_title = title if title and str(title).strip().lower() != "none" else video_id
     filename = get_safe_filename(safe_title, f"og_{video_id}")
@@ -134,46 +115,29 @@ async def onegrab_download(video_id: str, download_type: str, title: str = None)
         return file_path
 
     yt_url = f"https://www.youtube.com/watch?v={video_id}"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
         async with aiohttp.ClientSession(headers=headers) as session:
-            params = {
-                "url": yt_url, 
-                "type": "audio" if download_type == "audio" else "video", 
-                "api_key": current_key # Using the randomly selected key
-            }
-            async with session.get(
-                f"{ONEGRAB_API_URL}/download", 
-                params=params
-            ) as resp:
+            async with session.get(f"{ONEGRAB_API_URL}/download", params={"url": yt_url, "type": "audio" if download_type == "audio" else "video", "api_key": current_key}) as resp:
                 if resp.status == 200:
                     content_type = resp.headers.get("Content-Type", "").lower()
                     if "application/json" not in content_type and "text/html" not in content_type:
                         with open(file_path, "wb") as f:
                             async for chunk in resp.content.iter_chunked(131072):
                                 f.write(chunk)
-                                
         if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
             LOGGER.info(f"🟢 FAST-HOP SUCCESS: Downloaded '{safe_title}' from OneGrab API!")
             return file_path
-        else:
-            if os.path.exists(file_path): os.remove(file_path)
-            return None
-            
     except Exception as e:
         LOGGER.error(f"OneGrab API Failed: {e}. Skipping...")
-        if os.path.exists(file_path):
-            try: os.remove(file_path)
-            except: pass
-        return None
+        
+    if os.path.exists(file_path): 
+        try: os.remove(file_path)
+        except: pass
+    return None
 
-
-# 3. Apixhub Downloader (TERTIARY)
 async def apixhub_download(video_id: str, download_type: str, title: str = None) -> str:
-    if not APIXHUB_API_URL or not APIXHUB_API_KEY:
-        return None
-
+    if not APIXHUB_API_URL or not APIXHUB_API_KEY: return None
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     safe_title = title if title and str(title).strip().lower() != "none" else video_id
     filename = get_safe_filename(safe_title, f"apix_{video_id}")
@@ -183,13 +147,11 @@ async def apixhub_download(video_id: str, download_type: str, title: str = None)
     if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
         return file_path
 
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
         async with aiohttp.ClientSession(headers=headers) as session:
             endpoint = "streamvideo" if download_type == "video" else "streamaudio"
             url = f"{APIXHUB_API_URL}/{endpoint}/{video_id}?key={APIXHUB_API_KEY}"
-            
             async with session.get(url) as resp:
                 if resp.status == 200:
                     content_type = resp.headers.get("Content-Type", "").lower()
@@ -197,53 +159,45 @@ async def apixhub_download(video_id: str, download_type: str, title: str = None)
                         with open(file_path, "wb") as f:
                             async for chunk in resp.content.iter_chunked(131072):
                                 f.write(chunk)
-                                
         if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
             LOGGER.info(f"🟢 FAST-HOP SUCCESS: Downloaded '{safe_title}' from Apixhub API!")
             return file_path
-        else:
-            if os.path.exists(file_path): os.remove(file_path)
-            return None
-            
     except Exception as e:
         LOGGER.error(f"Apixhub API Failed: {e}. Skipping...")
-        if os.path.exists(file_path):
-            try: os.remove(file_path)
-            except: pass
-        return None
-
+        
+    if os.path.exists(file_path): 
+        try: os.remove(file_path)
+        except: pass
+    return None
 
 async def ytdl_fallback_download(link: str, download_type: str, title: str = None) -> str:
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     video_id = extract_video_id(link)
-    
-    # 🚀 TITLE BUG FIX: Handle 'None' as a string properly
     safe_title = title if title and str(title).strip().lower() != "none" else video_id
     filename = get_safe_filename(safe_title, video_id)
-    
     ext = "mp4" if download_type == "video" else "mp3"
     file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{ext}")
 
     if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
         return file_path
 
-    # 🚀 THE ULTIMATE FALLBACK: No strict extensions, just give me whatever is best!
+    # 🚀 FIX: Ultimate format fallback
     ydl_opts = {
-        'format': 'best' if download_type == "video" else 'bestaudio/best', 
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best' if download_type == "video" else 'ba/b/best', 
         'outtmpl': file_path,
         'quiet': True,
         'no_warnings': True,
-        'cookiefile': 'cookies.txt', 
-        'extractor_args': {'youtube': ['player_client=tv,android,web']}, 
         'geo_bypass': True,
         'nocheckcertificate': True,
         'noplaylist': True,
         'ignoreerrors': True,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
+        'extractor_args': {'youtube': ['player_client=tv,android,web']},
+        'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     }
     
+    if os.path.exists('cookies.txt'):
+        ydl_opts['cookiefile'] = 'cookies.txt'
+
     if download_type == "audio":
         ydl_opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
@@ -256,15 +210,12 @@ async def ytdl_fallback_download(link: str, download_type: str, title: str = Non
         if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
             LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{safe_title}' from yt-dlp!")
             return file_path
-        return None
     except Exception as e:
         LOGGER.error(f"yt-dlp fallback error: {str(e)}")
-        return None
-
+    return None
 
 async def soundcloud_fallback_download(title: str) -> str:
-    if not title or str(title).strip().lower() == "none": 
-        return None
+    if not title or str(title).strip().lower() == "none": return None
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     
     clean_title = clean_title_for_search(title)
@@ -274,7 +225,7 @@ async def soundcloud_fallback_download(title: str) -> str:
     file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.mp3")
 
     ydl_opts = {
-        'format': 'bestaudio/best',
+        'format': 'ba/b',
         'outtmpl': file_path,
         'quiet': True,
         'no_warnings': True,
@@ -286,11 +237,9 @@ async def soundcloud_fallback_download(title: str) -> str:
             'preferredquality': '192',
         }]
     }
-    
     try:
         search_query = f"scsearch1:{clean_title}"
         await _async_run(yt_dlp.YoutubeDL(ydl_opts).download, [search_query])
-        
         if os.path.exists(file_path) and os.path.getsize(file_path) > 50000:
             LOGGER.info(f"🟢 SOURCE-HOPPING SUCCESS: Downloaded '{clean_title}' from SoundCloud!")
             return file_path
@@ -298,89 +247,41 @@ async def soundcloud_fallback_download(title: str) -> str:
         LOGGER.error(f"SoundCloud fallback error: {str(e)}")
     return None
 
-
 async def download_song(link: str, title: str = None) -> str:
     video_id = extract_video_id(link)
-    if not video_id or len(video_id) < 3:
-        return None
+    if not video_id or len(video_id) < 3: return None
         
-    # 🚀 TITLE BUG FIX: Handle 'None' as a string properly
-    if not title or str(title).strip().lower() == "none":
-        try:
-            search = VideosSearch(video_id, limit=1)
-            res = await search.next()
-            if res and res.get("result"):
-                title = res["result"][0]["title"]
-        except Exception:
-            pass
-            
-    # Default to video_id if title is STILL not found to prevent breaking the flow
     if not title or str(title).strip().lower() == "none":
         title = f"Track_{video_id}"
 
-    # 1. Primary API
-    api_result = await api_download(video_id, "audio", title)
-    if api_result: return api_result
+    res = await api_download(video_id, "audio", title)
+    if res: return res
     
-    LOGGER.warning(f"🔴 Shruti API failed for '{title}'. Hopping to OneGrab API...")
-
-    # 2. Secondary API
-    onegrab_result = await onegrab_download(video_id, "audio", title)
-    if onegrab_result: return onegrab_result
+    res = await onegrab_download(video_id, "audio", title)
+    if res: return res
     
-    LOGGER.warning(f"🔴 OneGrab API failed for '{title}'. Hopping to Apixhub API...")
+    res = await apixhub_download(video_id, "audio", title)
+    if res: return res
 
-    # 3. Tertiary API
-    apixhub_result = await apixhub_download(video_id, "audio", title)
-    if apixhub_result: return apixhub_result
-
-    LOGGER.warning(f"🔴 Apixhub API failed for '{title}'. Hopping to yt-dlp...")
-
-    # 4. yt-dlp Fallback
-    yt_result = await ytdl_fallback_download(link, "audio", title)
-    if yt_result: return yt_result
+    res = await ytdl_fallback_download(link, "audio", title)
+    if res: return res
     
-    # 5. SoundCloud Fallback
-    LOGGER.warning(f"🔴 YouTube blocked '{title}'. Hopping to SoundCloud...")
-    sc_result = await soundcloud_fallback_download(title)
-    if sc_result: return sc_result
+    res = await soundcloud_fallback_download(title)
+    if res: return res
 
     return None
 
-
 async def download_video(link: str, title: str = None) -> str:
     video_id = extract_video_id(link)
-    if not video_id or len(video_id) < 3:
-        return None
+    if not video_id or len(video_id) < 3: return None
+    if not title or str(title).strip().lower() == "none": title = f"Video_{video_id}"
 
-    # 🚀 TITLE BUG FIX: Handle 'None' as a string properly
-    if not title or str(title).strip().lower() == "none":
-        try:
-            search = VideosSearch(video_id, limit=1)
-            res = await search.next()
-            if res and res.get("result"):
-                title = res["result"][0]["title"]
-        except:
-            pass
-
-    if not title or str(title).strip().lower() == "none":
-        title = f"Video_{video_id}"
-
-    api_result = await api_download(video_id, "video", title)
-    if api_result: return api_result
-    
-    LOGGER.warning(f"🔴 Shruti API failed for '{title}'. Hopping to OneGrab API...")
-
-    onegrab_result = await onegrab_download(video_id, "video", title)
-    if onegrab_result: return onegrab_result
-
-    LOGGER.warning(f"🔴 OneGrab API failed for '{title}'. Hopping to Apixhub API...")
-
-    apixhub_result = await apixhub_download(video_id, "video", title)
-    if apixhub_result: return apixhub_result
-
-    LOGGER.warning(f"🔴 Apixhub API failed for '{title}'. Hopping to yt-dlp...")
-
+    res = await api_download(video_id, "video", title)
+    if res: return res
+    res = await onegrab_download(video_id, "video", title)
+    if res: return res
+    res = await apixhub_download(video_id, "video", title)
+    if res: return res
     return await ytdl_fallback_download(link, "video", title)
 
 
@@ -414,6 +315,7 @@ class YouTubeAPI:
                         return entity.url
         return None
 
+    # 🚀 EASY SEARCH: Removed heavy yt-dlp fallback to prevent traffic blocks
     async def details(self, link: str, videoid: Union[bool, str] = None):
         if videoid: link = self.base + link
         if "&" in link: link = link.split("&")[0]
@@ -422,44 +324,15 @@ class YouTubeAPI:
             results = VideosSearch(link, limit=1)
             response = await results.next()
             if response and response.get("result"):
-                for result in response["result"]:
-                    title = result["title"]
-                    duration_min = result["duration"]
-                    thumbnail = result["thumbnails"][0]["url"].split("?")[0]
-                    vidid = result["id"]
-                    duration_sec = int(time_to_seconds(duration_min)) if duration_min else 0
-                    return title, duration_min, duration_sec, thumbnail, vidid
-        except Exception:
-            pass
-
-        try:
-            ydl_opts = {
-                "quiet": True, 
-                "extract_flat": True, 
-                "noplaylist": True,
-                "cookiefile": "cookies.txt",
-                "extractor_args": {"youtube": ["player_client=tv,android,web"]}, 
-                "http_headers": {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                }
-            } 
-            ydl = yt_dlp.YoutubeDL(ydl_opts)
-            search_query = link if "youtube.com" in link or "youtu.be" in link else f"ytsearch1:{link}"
-            
-            r = await _async_run(ydl.extract_info, search_query, download=False)
-            if r and "entries" in r and len(r["entries"]) > 0:
-                entry = r["entries"][0]
-                title = entry.get("title")
-                vidid = entry.get("id")
-                dur_sec = int(entry.get("duration", 0))
-                m, s = divmod(dur_sec, 60)
-                h, m = divmod(m, 60)
-                duration_min = f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
-                thumbnail = f"https://img.youtube.com/vi/{vidid}/hqdefault.jpg"
-                return title, duration_min, dur_sec, thumbnail, vidid
+                result = response["result"][0]
+                title = result["title"]
+                duration_min = result["duration"]
+                thumbnail = result["thumbnails"][0]["url"].split("?")[0]
+                vidid = result["id"]
+                duration_sec = int(time_to_seconds(duration_min)) if duration_min else 0
+                return title, duration_min, duration_sec, thumbnail, vidid
         except Exception as e:
-            LOGGER.error(f"yt-dlp search fallback failed in details: {e}")
-
+            LOGGER.error(f"Easy Search failed in details: {e}")
         return None, None, None, None, None
 
     async def title(self, link: str, videoid: Union[bool, str] = None):
@@ -519,6 +392,7 @@ class YouTubeAPI:
             ids.append(vid)
         return ids
 
+    # 🚀 EASY SEARCH: Removed heavy yt-dlp fallback
     async def track(self, link: str, videoid: Union[bool, str] = None):
         if videoid: link = self.base + link
         if "&" in link: link = link.split("&")[0]
@@ -535,41 +409,8 @@ class YouTubeAPI:
                     "duration_min": result["duration"],
                     "thumb": result["thumbnails"][0]["url"].split("?")[0],
                 }, result["id"]
-        except Exception:
-            pass
-
-        try:
-            ydl_opts = {
-                "quiet": True, 
-                "extract_flat": True, 
-                "noplaylist": True,
-                "cookiefile": "cookies.txt",
-                "extractor_args": {"youtube": ["player_client=tv,android,web"]},
-                "http_headers": {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                }
-            }
-            ydl = yt_dlp.YoutubeDL(ydl_opts)
-            search_query = link if "youtube.com" in link or "youtu.be" in link else f"ytsearch1:{link}"
-            r = await _async_run(ydl.extract_info, search_query, download=False)
-            
-            if r and "entries" in r and len(r["entries"]) > 0:
-                entry = r["entries"][0]
-                vidid = entry.get("id")
-                dur_sec = int(entry.get("duration", 0))
-                m, s = divmod(dur_sec, 60)
-                h, m = divmod(m, 60)
-                
-                return {
-                    "title": entry.get("title"),
-                    "link": f"https://www.youtube.com/watch?v={vidid}",
-                    "vidid": vidid,
-                    "duration_min": f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}",
-                    "thumb": f"https://img.youtube.com/vi/{vidid}/hqdefault.jpg",
-                }, vidid
         except Exception as e:
-            LOGGER.error(f"yt-dlp search fallback failed in track: {e}")
-
+            LOGGER.error(f"Easy Search failed in track: {e}")
         return None, None
 
     async def formats(self, link: str, videoid: Union[bool, str] = None):
@@ -644,48 +485,43 @@ class YouTubeAPI:
             LOGGER.error(f"Error in YouTubeAPI.download: {e}")
             return None, False
 
-    # 🚀 FASTEST SEARCH API (Time Limit And Heavy Traffic Search Fallback Removed)
+    # 🚀 FASTEST SEARCH API (Easy Search implementation, no heavy yt-dlp search)
     async def autoplay(self, last_vidid: str, title: str, max_duration: int = None):
         try:
-            search_query = f"{title}"
+            # Clean title taaki jaldi aur accurate results milein
+            search_query = clean_title_for_search(title)
+            if not search_query: search_query = "top hits"
+            
+            search = VideosSearch(search_query, limit=10)
+            result = await search.next()
             valid_choices = []
             
-            try:
-                search = VideosSearch(search_query, limit=10)
-                result = await search.next()
-                if result and result.get("result"):
-                    for res in result["result"]:
-                        vidid = str(res.get("id") or "")
+            if result and result.get("result"):
+                for res in result["result"]:
+                    vidid = str(res.get("id") or "")
+                    if not vidid or vidid == "None" or vidid == last_vidid: 
+                        continue
                         
-                        # Skip if it's the exact song currently playing
-                        if not vidid or vidid == "None" or vidid == last_vidid: 
-                            continue
+                    dur_str = str(res.get("duration", "0:00"))
+                    dur_sec = 0
+                    if dur_str and ":" in dur_str:
+                        parts = dur_str.split(":")
+                        try:
+                            if len(parts) == 2: dur_sec = int(parts[0]) * 60 + int(parts[1])
+                            elif len(parts) == 3: dur_sec = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+                        except ValueError: pass
                             
-                        dur_str = str(res.get("duration", "0:00"))
-                        dur_sec = 0
-                        
-                        if dur_str and ":" in dur_str:
-                            parts = dur_str.split(":")
-                            try:
-                                if len(parts) == 2: dur_sec = int(parts[0]) * 60 + int(parts[1])
-                                elif len(parts) == 3: dur_sec = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-                            except ValueError: 
-                                pass
-                                
-                        valid_choices.append({
-                            "vidid": vidid,
-                            "title": str(res.get("title", "Unknown Title")).title(),
-                            "duration_min": dur_str,
-                            "duration_sec": dur_sec
-                        })
-            except Exception: 
-                pass 
+                    valid_choices.append({
+                        "vidid": vidid,
+                        "title": str(res.get("title", "Unknown Title")).title(),
+                        "duration_min": dur_str,
+                        "duration_sec": dur_sec
+                    })
 
             if valid_choices: 
-                # Picks from top 5 instant results for smooth autoplay
-                return random.choice(valid_choices[:5])
+                # Picks from top 3 instant results for smooth autoplay
+                return random.choice(valid_choices[:3])
             return None
-            
         except Exception as e:
             LOGGER.error(f"YouTube Autoplay Function Error: {e}")
             return None
