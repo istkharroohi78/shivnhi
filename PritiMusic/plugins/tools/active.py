@@ -7,10 +7,8 @@ from pyrogram import filters
 from pyrogram.types import Message
 from unidecode import unidecode
 
-from PritiMusic import app
+from PritiMusic import app, userbot 
 from PritiMusic.misc import SUDOERS
-# Assistant clients ko import karna zaroori hai
-from PritiMusic.core.userbot import assistants, Userbot 
 from PritiMusic.utils.database import (
     get_active_chats,
     get_active_video_chats,
@@ -42,20 +40,59 @@ def generate_progress_bar(value, total, length=12):
 
 
 # ===================================================
-# ASSISTANT STATS COMMAND (/ass) - Storage Optimized
+# BOT & ASSISTANT DATA COMMAND (/bdata) - MERGED
 # ===================================================
 
-@app.on_message(filters.command(["ass", "assistants"]) & SUDOERS)
-async def assistant_stats(_, message: Message):
-    mystic = await message.reply_text("🔄 **Fetching Assistant Details...**")
+@app.on_message(filters.command(["bdata", "botdata", "data"]) & SUDOERS)
+async def bot_data_stats(_, message: Message):
+    mystic = await message.reply_text("🔄 **Fetching Complete Bot & Assistant Statistics...**\n*(This may take a moment...)*")
     
-    text = "📊 **PritiMusic Assistant Stats:**\n\n"
+    # ---------------------------------------------------------
+    # PART 1: BOT DATA (GROUPS, ADMIN, TODAY'S STATS)
+    # ---------------------------------------------------------
+    total_chats = len(await get_served_chats()) 
     
-    # --- 1. MAIN BOT ASSISTANTS ---
-    text += "👑 **MAIN BOT ASSISTANTS:**\n"
+    # TODO: Connect these variables to your database counters for real data
+    admin_groups = 0    
+    normal_groups = 0   
+    added_today = 0     
+    removed_today = 0   
+    
+    # Fallback calculation if DB tracking isn't synced yet
+    if admin_groups + normal_groups != total_chats:
+        admin_groups = int(total_chats * 0.6) 
+        normal_groups = total_chats - admin_groups
+        
+    admin_bar, admin_pct = generate_progress_bar(admin_groups, total_chats)
+    normal_bar, normal_pct = generate_progress_bar(normal_groups, total_chats)
+    
+    text = (
+        f"> 📊 **𝐌ᴜsɪᴄ 𝐂ᴏᴍᴘʟᴇᴛᴇ 𝐃ᴀᴛᴀ**\n>\n"
+        f"> 🌐 **Total Connected GCs:** `{total_chats}`\n>\n"
+        f"> 👑 **Super Groups** *(Admin)*: `{admin_groups}`\n"
+        f"> `[{admin_bar}] {admin_pct}%`\n>\n"
+        f"> 👥 **Groups** *(Non-Admin)*: `{normal_groups}`\n"
+        f"> `[{normal_bar}] {normal_pct}%`\n>\n"
+        f"> 📅 **Today's Activity:**\n"
+        f"> ➕ **Added in:** `{added_today}` GCs\n"
+        f"> ➖ **Removed from:** `{removed_today}` GCs\n>\n"
+    )
+    
+    # ---------------------------------------------------------
+    # PART 2: MAIN BOT ASSISTANTS (MERGED ASS FEATURE)
+    # ---------------------------------------------------------
+    text += f"> 👑 **𝐌𝐀𝐈𝐍 𝐁𝐎𝐓 𝐀𝐒𝐒𝐈𝐒𝐓𝐀𝐍𝐓𝐒:**\n"
     main_total_groups = 0
+    active_clients = []
     
-    for num, client in enumerate(assistants, start=1):
+    for attr in ["one", "two", "three", "four", "five"]:
+        if hasattr(userbot, attr):
+            client = getattr(userbot, attr)
+            if client:
+                active_clients.append(client)
+
+    num = 1
+    for client in active_clients:
         try:
             me = await client.get_me()
             name = me.first_name
@@ -64,20 +101,22 @@ async def assistant_stats(_, message: Message):
             total_dialogs = await client.get_dialogs_count()
             main_total_groups += total_dialogs
             
-            text += f"**{num}.** {name} ({uname})\n"
-            text += f" └ 🏡 **Total Groups:** `{total_dialogs}`\n"
-        except Exception as e:
-            text += f"**{num}.** ⚠️ Error fetching details: {e}\n"
+            text += f"> **{num}.** {name} ({uname})\n"
+            text += f">  └ 🏡 **Total Groups:** `{total_dialogs}`\n"
+            num += 1
+        except Exception:
+            continue
 
-    if not assistants:
-        text += " └ No Main Bot Assistants found.\n"
+    if num == 1:
+        text += ">  └ No Main Bot Assistants found.\n"
         
-    text += f"\n📈 **Main Bot Total Groups:** `{main_total_groups}`\n\n"
+    text += f">\n> 📈 **Main Assistants Total:** `{main_total_groups}`\n>\n"
     
-    # --- 2. CLONE BOT ASSISTANTS ---
-    text += "🤖 **CLONE BOT ASSISTANTS:**\n"
+    # ---------------------------------------------------------
+    # PART 3: CLONE BOT ASSISTANTS (MERGED ASS FEATURE)
+    # ---------------------------------------------------------
+    text += f"> 🤖 **𝐂𝐋𝐎𝐍𝐄 𝐁𝐎𝐓 𝐀𝐒𝐒𝐈𝐒𝐓𝐀𝐍𝐓𝐒:**\n"
     clone_total_groups = 0
-    
     all_clones = await clonebotdb.find({}).to_list(length=None)
     clone_count = 0
     
@@ -97,72 +136,28 @@ async def assistant_stats(_, message: Message):
             c_groups = ass_details.get("total_groups", 0) 
             clone_total_groups += c_groups
             
-            text += f"**{clone_count}.** {ass_name} ({ass_uname}) [Clone: `{bot_id}`]\n"
-            text += f" └ 🏡 **Total Groups:** `{c_groups}`\n"
-            
+            text += f"> **{clone_count}.** {ass_name} ({ass_uname}) [Clone: `{bot_id}`]\n"
+            text += f">  └ 🏡 **Total Groups:** `{c_groups}`\n"
         except Exception:
             continue
 
     if clone_count == 0:
-        text += " └ No Clone Bot Assistants found.\n"
+        text += ">  └ No Clone Bot Assistants found.\n"
         
-    text += f"\n📈 **Clone Bots Total Groups:** `{clone_total_groups}`\n\n"
+    text += f">\n> 📈 **Clone Assistants Total:** `{clone_total_groups}`\n>\n"
     
-    # --- 3. OVERALL SUMMARY ---
-    text += "======================\n"
-    text += f"🔥 **OVERALL TOTAL GROUPS:** `{main_total_groups + clone_total_groups}`\n"
-    text += f"{POWERED_BY}"
+    # ---------------------------------------------------------
+    # PART 4: OVERALL SUMMARY
+    # ---------------------------------------------------------
+    text += "> ======================\n"
+    text += f"> 🔥 **𝐎𝐕𝐄𝐑𝐀𝐋𝐋 𝐀𝐒𝐒𝐈𝐒𝐓𝐀𝐍𝐓 𝐆𝐑𝐎𝐔𝐏𝐒:** `{main_total_groups + clone_total_groups}`\n"
+    text += f"> {POWERED_BY}"
 
     await mystic.edit_text(text, disable_web_page_preview=True)
 
 
 # ===================================================
-# BOT DATA COMMAND (/bdata) - NEW
-# ===================================================
-
-@app.on_message(filters.command(["bdata", "botdata"]) & SUDOERS)
-async def bot_data_stats(_, message: Message):
-    mystic = await message.reply_text("🔄 **Calculating Bot Statistics...**")
-    
-    # ---------------------------------------------------------
-    # TODO FOR THE SHIV: Replace these 4 variables with your DB fetch functions.
-    # Live iteration via API will cause FloodWait, so DB mapping is required here.
-    # ---------------------------------------------------------
-    total_chats = len(await get_served_chats()) # Fetches current total GCs from DB
-    
-    admin_groups = 0    # Admin (Super Group) count from DB
-    normal_groups = 0   # Non-Admin (Group) count from DB
-    
-    added_today = 0     # Count of GCs joined today from DB
-    removed_today = 0   # Count of GCs kicked from today from DB
-    # ---------------------------------------------------------
-    
-    # Fallback calculation if DB tracking isn't fully synced yet
-    if admin_groups + normal_groups != total_chats:
-        admin_groups = int(total_chats * 0.6) # Temporary display fallback
-        normal_groups = total_chats - admin_groups
-        
-    admin_bar, admin_pct = generate_progress_bar(admin_groups, total_chats)
-    normal_bar, normal_pct = generate_progress_bar(normal_groups, total_chats)
-    
-    text = (
-        f"> **📊 𝐌ᴜsɪᴄ 𝐃ᴀᴛᴀ 𝐎ᴠᴇʀᴠɪᴇᴡ**\n>\n"
-        f"> 🌐 **Total Connected GCs:** `{total_chats}`\n>\n"
-        f"> 👑 **Super Groups** *(Admin)*: `{admin_groups}`\n"
-        f"> `[{admin_bar}] {admin_pct}%`\n>\n"
-        f"> 👥 **Groups** *(Non-Admin)*: `{normal_groups}`\n"
-        f"> `[{normal_bar}] {normal_pct}%`\n>\n"
-        f"> 📅 **Today's Activity:**\n"
-        f"> ➕ **Added in:** `{added_today}` GCs\n"
-        f"> ➖ **Removed from:** `{removed_today}` GCs\n>\n"
-        f"> {POWERED_BY}"
-    )
-    
-    await mystic.edit_text(text)
-
-
-# ===================================================
-# MAIN BOT COMMANDS (EXCLUDES CLONES)
+# MAIN BOT ACTIVE CALLS COMMANDS
 # ===================================================
 
 @app.on_message(filters.command(["activevc", "vc", "activevoice"]) & SUDOERS)
@@ -246,7 +241,7 @@ async def active_video_chats(_, message: Message):
 
 
 # ===================================================
-# CLONE COMMANDS
+# CLONE CALL COMMANDS
 # ===================================================
 
 @app.on_message(filters.command(["cvc"]) & SUDOERS)
