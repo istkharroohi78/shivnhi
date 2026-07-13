@@ -8,9 +8,9 @@ from pyrogram import Client, filters, enums
 from pyrogram.enums import ButtonStyle
 from pyrogram.types import ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboardButton
 
-# MoviePy for Video Editing (V2 Syntax)
-from moviepy import VideoFileClip, ImageClip, CompositeVideoClip, AudioFileClip
-import moviepy.video.fx as vfx 
+# MoviePy for Video Editing (V1 Syntax)
+from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip, AudioFileClip
+import moviepy.video.fx.all as vfx 
 
 from PritiMusic import app 
 
@@ -110,36 +110,32 @@ def generate_dynamic_welcome_video(pic_path, user_id, uname):
         
         # 1. 🟢 DP Clip with LIVE PULSE (Heartbeat effect)
         dp_clip = (ImageClip(circular_pic_path)
-                   .with_start(start_time) 
-                   .with_duration(bg_clip.duration - start_time)
-                   .with_position(("center", 120))
-                   .with_effects([
-                       vfx.CrossFadeIn(1.5),
-                       vfx.Resize(lambda t: 1 + 0.02 * math.sin(t * 5))
-                   ])) 
+                   .set_start(start_time) 
+                   .set_duration(bg_clip.duration - start_time)
+                   .set_position(("center", 120))
+                   .crossfadein(1.5)
+                   .fx(vfx.resize, lambda t: 1 + 0.02 * math.sin(t * 5))) 
 
         # 2. 🟢 Center Text Clip (Upward float + Breathing effect)
         def floating_and_breathing(t):
             return ("center", 500 - int(t * 12) + int(2 * math.sin(t * 8))) 
 
         center_text_clip = (ImageClip(center_text_path)
-                            .with_start(start_time + 0.2)
-                            .with_duration(bg_clip.duration - (start_time + 0.2))
-                            .with_position(floating_and_breathing)
-                            .with_effects([
-                                vfx.CrossFadeIn(1.0),
-                                vfx.Resize(lambda t: 1 + 0.015 * math.sin(t * 6))
-                            ]))
+                            .set_start(start_time + 0.2)
+                            .set_duration(bg_clip.duration - (start_time + 0.2))
+                            .set_position(floating_and_breathing)
+                            .crossfadein(1.0)
+                            .fx(vfx.resize, lambda t: 1 + 0.015 * math.sin(t * 6)))
 
         # 3. 🟢 Bottom Left 'the shiv' Clip (Sliding in and glowing)
         def slide_in(t):
             return (20 + int(10 * math.sin(t * 3)), "bottom")
 
         left_text_clip = (ImageClip(left_text_path)
-                          .with_start(start_time + 0.5)
-                          .with_duration(bg_clip.duration - (start_time + 0.5))
-                          .with_position(slide_in)
-                          .with_effects([vfx.CrossFadeIn(1.0)]))
+                          .set_start(start_time + 0.5)
+                          .set_duration(bg_clip.duration - (start_time + 0.5))
+                          .set_position(slide_in)
+                          .crossfadein(1.0))
 
         # Clips Merge Karein
         final_video = CompositeVideoClip([bg_clip, dp_clip, center_text_clip, left_text_clip])
@@ -155,8 +151,8 @@ def generate_dynamic_welcome_video(pic_path, user_id, uname):
             if audio_end_time > audio_clip.duration:
                 audio_end_time = audio_clip.duration
                 
-            main_line_audio = audio_clip.subclipped(audio_start_time, audio_end_time)
-            final_video = final_video.with_audio(main_line_audio)
+            main_line_audio = audio_clip.subclip(audio_start_time, audio_end_time)
+            final_video = final_video.set_audio(main_line_audio)
         else:
             LOGGER.warning("Song file 'main_chahta_hoon.mp3' not found!")
 
