@@ -9,7 +9,7 @@ from pyrogram import Client, filters, enums
 from pyrogram.enums import ButtonStyle
 from pyrogram.types import ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboardButton
 
-# MoviePy for Video Editing (V1 Syntax)
+# MoviePy for Video Editing
 from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip, AudioFileClip
 import moviepy.video.fx.all as vfx 
 
@@ -19,7 +19,7 @@ LOGGER = getLogger(__name__)
 
 welcome_state = {}  
 last_welcome_msg = {}  
-custom_welcomes = {}  # Store custom welcomes and settings
+custom_welcomes = {}
 
 # ==========================================
 # 1. AUTO DELETE MESSAGE FUNCTION
@@ -35,32 +35,23 @@ async def auto_delete_message(message, delay_seconds):
 # 2. BUTTON & TEXT PARSER HELPERS
 # ==========================================
 def parse_custom_text(text):
-    """Text me se [Button Name | Link | Color] format ko parse karta hai"""
     if not text:
         return "", None
-        
     buttons = []
-    
     def replacer(match):
         btn_text = match.group(1).strip()
         btn_url = match.group(2).strip()
         btn_color_str = (match.group(3) or "").strip().lower()
         
-        # 🟢 Button Color Logic
-        b_style = ButtonStyle.PRIMARY # Default Blue
-        if btn_color_str in ["red", "danger"]:
-            b_style = ButtonStyle.DANGER
-        elif btn_color_str in ["green", "success"]:
-            b_style = ButtonStyle.SUCCESS
-        elif btn_color_str in ["gray", "secondary"]:
-            b_style = ButtonStyle.SECONDARY
+        b_style = ButtonStyle.PRIMARY
+        if btn_color_str in ["red", "danger"]: b_style = ButtonStyle.DANGER
+        elif btn_color_str in ["green", "success"]: b_style = ButtonStyle.SUCCESS
+        elif btn_color_str in ["gray", "secondary"]: b_style = ButtonStyle.SECONDARY
             
         buttons.append([InlineKeyboardButton(btn_text, url=btn_url, style=b_style)])
-        return "" # Remove button syntax from main text
+        return "" 
         
-    # Regex handles both [Name | Link] and [Name | Link | Color]
     clean_text = re.sub(r'\[([^\]\|]+)\|\s*([^\]\|]+?)(?:\|\s*([^\]]+))?\]', replacer, text)
-    
     markup = InlineKeyboardMarkup(buttons) if buttons else None
     return clean_text.strip(), markup
 
@@ -73,67 +64,64 @@ def format_custom_text(text, user, chat_title, count):
     return text
 
 # ==========================================
-# 3. GLOW IMAGE & VIDEO PROCESSING
+# 3. GLOW IMAGE & VIDEO PROCESSING (FIXED)
 # ==========================================
 def create_circular_pfp(pic_path, size=(300, 300)):
+    """DP ko proper circle banata hai taaki video ke frame me fit ho sake"""
     pfp = Image.open(pic_path).convert("RGBA")
     pfp = pfp.resize(size, Image.Resampling.LANCZOS)
     
-    glow_size = (size[0] + 40, size[1] + 40)
-    glow_img = Image.new("RGBA", glow_size, (0, 0, 0, 0))
-    draw_glow = ImageDraw.Draw(glow_img)
-    
-    for i in range(15, 0, -2):
-        glow_color = (0, 255, 255, int(50 / i)) if i % 2 == 0 else (255, 0, 128, int(50 / i))
-        draw_glow.ellipse((20-i, 20-i, glow_size[0]-20+i, glow_size[1]-20+i), fill=None, outline=glow_color, width=4)
-
-    draw_glow.ellipse((20, 20, glow_size[0]-20, glow_size[1]-20), fill=None, outline=(255, 255, 255, 255), width=3)
-    
+    # Simple clean circle mask without huge borders (Video already has a border)
     mask = Image.new("L", size, 0)
     draw = ImageDraw.Draw(mask)
     draw.ellipse((0, 0, size[0], size[1]), fill=255) 
     
     pfp_masked = Image.new("RGBA", size)
     pfp_masked.paste(pfp, (0, 0), mask=mask)
-    glow_img.paste(pfp_masked, (20, 20), mask=pfp_masked)
     
     os.makedirs("downloads", exist_ok=True)
     temp_path = f"downloads/temp_circle_{random.randint(1000,9999)}.png"
-    glow_img.save(temp_path)
+    pfp_masked.save(temp_path)
     return temp_path
 
 def draw_text_with_glow(draw, position, text, font, text_color, glow_color):
+    """Thick black stroke ke sath neon glow taaki background ke words chhip jayein"""
     x, y = position
-    draw.text((x, y), text, fill=glow_color, font=font, anchor="ma", align="center", stroke_width=6, stroke_fill=glow_color)
+    # Layer 1: Thick Black outline (To hide the video's original placeholder text)
+    draw.text((x, y), text, fill="black", font=font, anchor="ma", align="center", stroke_width=12, stroke_fill="black")
+    # Layer 2: Neon Glow
+    draw.text((x, y), text, fill=glow_color, font=font, anchor="ma", align="center", stroke_width=5, stroke_fill=glow_color)
+    # Layer 3: Main White Text
     draw.text((x, y), text, fill=text_color, font=font, anchor="ma", align="center", stroke_width=1, stroke_fill=(255, 255, 255))
 
-def create_text_images(uname, user_id):
-    img_center = Image.new('RGBA', (800, 450), (255, 255, 255, 0))
-    draw_c = ImageDraw.Draw(img_center)
-    img_left = Image.new('RGBA', (400, 150), (255, 255, 255, 0))
-    draw_l = ImageDraw.Draw(img_left)
+def create_text_images(name, uname, user_id):
+    """Right side ke liye exact spacing wala text image"""
+    img_text = Image.new('RGBA', (600, 450), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(img_text)
     
     try:
-        font_large = ImageFont.truetype("PritiMusic/assets/font.ttf", 55)
-        font_small = ImageFont.truetype("PritiMusic/assets/font.ttf", 35) 
+        font_large = ImageFont.truetype("PritiMusic/assets/font.ttf", 60)
+        font_medium = ImageFont.truetype("PritiMusic/assets/font.ttf", 45) 
     except Exception:
         font_large = ImageFont.load_default()
-        font_small = ImageFont.load_default()
+        font_medium = ImageFont.load_default()
         
-    draw_c.line((100, 20, 700, 20), fill=(255, 0, 128), width=3)
-    text_main = f"WELCOME @{uname}\nID: {user_id}\nBETA BOTS"
-    draw_text_with_glow(draw_c, (400, 50), text_main, font_large, (255, 255, 255), (0, 150, 255))
-    draw_c.line((100, 380, 700, 380), fill=(255, 0, 128), width=3)
+    # Name (Pink Glow) - Pehli line
+    draw_text_with_glow(draw, (300, 50), str(name)[:15], font_large, (255, 255, 255), (255, 0, 128))
     
-    text_shiv = "THE SHIV"
-    draw_l.text((20, 50), text_shiv, fill=(0, 255, 255), font=font_small, anchor="la", stroke_width=3, stroke_fill=(138, 43, 226)) 
+    # Username (Cyan Glow) - Dusri line
+    uname_text = f"@{uname}"[:20] if uname else ""
+    draw_text_with_glow(draw, (300, 180), uname_text, font_medium, (255, 255, 255), (0, 255, 255))
     
-    path_center = f"downloads/temp_center_{random.randint(1000,9999)}.png"
-    path_left = f"downloads/temp_left_{random.randint(1000,9999)}.png"
-    img_center.save(path_center); img_left.save(path_left)
-    return path_center, path_left
+    # User ID (Pink Glow) - Teesri line
+    draw_text_with_glow(draw, (300, 310), f"ID: {user_id}", font_medium, (255, 255, 255), (255, 0, 128))
+    
+    path_text = f"downloads/temp_text_{random.randint(1000,9999)}.png"
+    img_text.save(path_text)
+    
+    return path_text
 
-def generate_dynamic_welcome_video(pic_path, user_id, uname):
+def generate_dynamic_welcome_video(pic_path, user_id, name, uname):
     bg_video_path = "PritiMusic/assets/car_entry_template.mp4" 
     audio_path = "PritiMusic/assets/welcome_song.mp3"  
     output_path = f"downloads/welcome_vid_{user_id}.mp4"
@@ -141,38 +129,55 @@ def generate_dynamic_welcome_video(pic_path, user_id, uname):
 
     try:
         bg_clip = VideoFileClip(bg_video_path).without_audio()
-        circular_pic_path = create_circular_pfp(pic_path)
-        center_text_path, left_text_path = create_text_images(uname, user_id)
         
-        start_time = 0.08  
-        dp_clip = (ImageClip(circular_pic_path).set_start(start_time).set_duration(bg_clip.duration - start_time)
-                   .set_position(("center", 120)).crossfadein(1.5).fx(vfx.resize, lambda t: 1 + 0.02 * math.sin(t * 5))) 
+        # 🟢 TIMING SETTING: Video ke aakhiri 2.8 seconds me sab dikhega
+        start_time = max(0, bg_clip.duration - 2.8) 
+        duration_left = bg_clip.duration - start_time
 
-        def floating(t): return ("center", 500 - int(t * 12) + int(2 * math.sin(t * 8))) 
-        center_text_clip = (ImageClip(center_text_path).set_start(start_time + 0.2).set_duration(bg_clip.duration - (start_time + 0.2))
-                            .set_position(floating).crossfadein(1.0).fx(vfx.resize, lambda t: 1 + 0.015 * math.sin(t * 6)))
+        # Image generation
+        circular_pic_path = create_circular_pfp(pic_path, size=(280, 280))
+        text_path = create_text_images(name, uname, user_id)
+        
+        # 🟢 DP POSITION: (115, 215) -> Agar DP circle ke bahar ho to in numbers ko change karein
+        dp_clip = (ImageClip(circular_pic_path)
+                   .set_start(start_time)
+                   .set_duration(duration_left)
+                   .set_position((115, 215))  
+                   .crossfadein(0.5)) 
 
-        def slide_in(t): return (20 + int(10 * math.sin(t * 3)), "bottom")
-        left_text_clip = (ImageClip(left_text_path).set_start(start_time + 0.5).set_duration(bg_clip.duration - (start_time + 0.5))
-                          .set_position(slide_in).crossfadein(1.0))
+        # 🟢 TEXT POSITION: (650, 200) -> Agar Text lines par fit na ho to in numbers ko change karein
+        text_clip = (ImageClip(text_path)
+                     .set_start(start_time)
+                     .set_duration(duration_left)
+                     .set_position((650, 200))
+                     .crossfadein(0.5))
 
-        final_video = CompositeVideoClip([bg_clip, dp_clip, center_text_clip, left_text_clip])
+        # Merge Clips (Removed the unwanted left text clip)
+        final_video = CompositeVideoClip([bg_clip, dp_clip, text_clip])
 
         if os.path.exists(audio_path):
             audio_clip = AudioFileClip(audio_path)
             main_line_audio = audio_clip.subclip(0, min(audio_clip.duration, final_video.duration))
             final_video = final_video.set_audio(main_line_audio)
 
-        final_video.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac" if os.path.exists(audio_path) else None, preset="ultrafast", threads=4, logger=None)
+        final_video.write_videofile(
+            output_path, fps=24, codec="libx264", 
+            audio_codec="aac" if os.path.exists(audio_path) else None, 
+            preset="ultrafast", threads=4, logger=None
+        )
         
-        bg_clip.close(); dp_clip.close(); center_text_clip.close(); left_text_clip.close()
+        # Cleanup
+        bg_clip.close(); dp_clip.close(); text_clip.close()
         if os.path.exists(audio_path): audio_clip.close()
         final_video.close()
         
-        for path in [circular_pic_path, center_text_path, left_text_path]:
+        for path in [circular_pic_path, text_path]:
             if os.path.exists(path): os.remove(path)
         return output_path
-    except Exception: return None
+        
+    except Exception as e:
+        LOGGER.error(f"Error in video generation: {e}")
+        return None
 
 # ==========================================
 # 4. COMMAND HANDLERS
@@ -204,41 +209,31 @@ async def set_custom_welcome(client, message):
         return await message.reply(
             "**🛠 Custom Welcome Set Karne Ka Tarika:**\n\n"
             "Apne text, photo, GIF, sticker par reply karke command dein.\n"
-            "Timer set karne ke liye: `/set_welcome 5` (5 min) ya `/set_welcome off` (delete nahi hoga).\n\n"
+            "Timer set karne ke liye: `/set_welcome 5` (5 min) ya `/set_welcome off`.\n\n"
             "**Placeholders:**\n"
             "`{mention}`, `{id}`, `{count}`, `{chatname}`\n\n"
             "**Buttons Format:**\n"
-            "`[Button Naam | https://link.com | red]`\n"
-            "*(Colors: red, green, blue, gray)*"
+            "`[Button Naam | https://link.com | red]`"
         )
 
-    # 🟢 TIMER LOGIC
     args = message.command[1:]
-    delete_time = 480  # Default 8 mins in seconds
+    delete_time = 480  
     
     if args:
         arg = args[0].lower()
         if arg == "off" or arg == "0":
             delete_time = 0
         elif arg.isdigit():
-            delete_time = int(arg) * 60  # Convert minutes to seconds
+            delete_time = int(arg) * 60
 
     reply = message.reply_to_message
     media_type = "text"
     media_id = None
 
-    if reply.photo:
-        media_type = "photo"
-        media_id = reply.photo.file_id
-    elif reply.animation:
-        media_type = "animation"
-        media_id = reply.animation.file_id
-    elif reply.sticker:
-        media_type = "sticker"
-        media_id = reply.sticker.file_id
-    elif reply.video:
-        media_type = "video"
-        media_id = reply.video.file_id
+    if reply.photo: media_type, media_id = "photo", reply.photo.file_id
+    elif reply.animation: media_type, media_id = "animation", reply.animation.file_id
+    elif reply.sticker: media_type, media_id = "sticker", reply.sticker.file_id
+    elif reply.video: media_type, media_id = "video", reply.video.file_id
 
     raw_text = reply.text or reply.caption or ""
 
@@ -278,26 +273,18 @@ async def greet_new_member(client, member: ChatMemberUpdated):
         clean_text, reply_markup = parse_custom_text(raw_text)
         final_text = format_custom_text(clean_text, user, chat_title, count)
         
-        m_type = custom_data["type"]
-        m_id = custom_data["media_id"]
+        m_type, m_id = custom_data["type"], custom_data["media_id"]
         del_time = custom_data.get("delete_time", 480)
         
         try:
-            if m_type == "text":
-                msg = await client.send_message(chat_id, text=final_text, reply_markup=reply_markup)
-            elif m_type == "photo":
-                msg = await client.send_photo(chat_id, photo=m_id, caption=final_text, reply_markup=reply_markup)
-            elif m_type == "animation":
-                msg = await client.send_animation(chat_id, animation=m_id, caption=final_text, reply_markup=reply_markup)
-            elif m_type == "sticker":
-                msg = await client.send_sticker(chat_id, sticker=m_id, reply_markup=reply_markup)
-            elif m_type == "video":
-                msg = await client.send_video(chat_id, video=m_id, caption=final_text, reply_markup=reply_markup)
+            if m_type == "text": msg = await client.send_message(chat_id, text=final_text, reply_markup=reply_markup)
+            elif m_type == "photo": msg = await client.send_photo(chat_id, photo=m_id, caption=final_text, reply_markup=reply_markup)
+            elif m_type == "animation": msg = await client.send_animation(chat_id, animation=m_id, caption=final_text, reply_markup=reply_markup)
+            elif m_type == "sticker": msg = await client.send_sticker(chat_id, sticker=m_id, reply_markup=reply_markup)
+            elif m_type == "video": msg = await client.send_video(chat_id, video=m_id, caption=final_text, reply_markup=reply_markup)
                 
             last_welcome_msg[chat_id] = msg
-            
-            if del_time > 0:
-                asyncio.create_task(auto_delete_message(msg, del_time))
+            if del_time > 0: asyncio.create_task(auto_delete_message(msg, del_time))
             return  
         except Exception as e:
             LOGGER.error(f"Custom Welcome Error: {e}")
@@ -310,12 +297,12 @@ async def greet_new_member(client, member: ChatMemberUpdated):
             try: pic_path = await client.download_media(user.photo.big_file_id, file_name=f"downloads/pp{user.id}.png")
             except Exception: pass
 
-        uname = user.username or user.first_name
-        welcome_vid = generate_dynamic_welcome_video(pic_path, user.id, uname)
+        name = user.first_name
+        uname = user.username or ""
+        welcome_vid = generate_dynamic_welcome_video(pic_path, user.id, name, uname)
         
         caption = f"**⎊─────☵ ᴡᴇʟᴄᴏᴍᴇ ☵─────⎊**\n\n**☉ ɴᴀᴍᴇ ⧽** {user.mention}\n**☉ ɪᴅ ⧽** `{user.id}`\n**☉ ᴛᴏᴛᴀʟ ᴍᴇᴍʙᴇʀs ⧽** {count}\n\n**⎉──────▢✭ 侖 ✭▢──────⎉**"
         
-        # Default button using Pyrogram Styles
         styles = [ButtonStyle.PRIMARY, ButtonStyle.SUCCESS, ButtonStyle.DANGER]
         markup = InlineKeyboardMarkup([[InlineKeyboardButton("๏ our bots ๏", url=f"https://t.me/betabot_hub/6701", style=random.choice(styles))]])
 
@@ -325,7 +312,7 @@ async def greet_new_member(client, member: ChatMemberUpdated):
             msg = await client.send_message(chat_id, text=caption, reply_markup=markup)
 
         last_welcome_msg[chat_id] = msg
-        asyncio.create_task(auto_delete_message(msg, 480)) # Default 8 mins
+        asyncio.create_task(auto_delete_message(msg, 480))
         
         if welcome_vid and os.path.exists(welcome_vid): os.remove(welcome_vid) 
         if pic_path and os.path.exists(pic_path) and "assets" not in pic_path: os.remove(pic_path) 
