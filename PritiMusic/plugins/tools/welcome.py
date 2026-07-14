@@ -13,13 +13,14 @@ from PritiMusic import app
 
 LOGGER = getLogger(__name__)
 
+# --- In-Memory Database ---
 welcome_state = {}  
 last_welcome_msg = {}  
 custom_welcomes = {}  
 weltime_state = {}    
 
 
-# 🔥 1. UPDATED BUTTON PARSER (With Colors: red, green, blue)
+# 🔥 1. BUTTON PARSER (Text se button aur color nikalne ka system)
 def parse_buttons(text):
     if not text:
         return text, None
@@ -39,18 +40,17 @@ def parse_buttons(text):
             row = []
             parts = line.split("|")
             for part in parts:
-                # Match syntax with optional color
+                # Match syntax with optional color (red, green, blue)
                 match = re.search(r'\[(.+?)\]\(buttonurl:([^\s\)]+)(?:\s+color:(red|green|blue))?\)', part, re.IGNORECASE)
                 if match:
                     btn_name = match.group(1).strip()
                     btn_url = match.group(2).strip()
                     color_str = match.group(3)
                     
-                    # Agar color diya hai toh wo set hoga, warna random
                     btn_style = color_map[color_str.lower()] if color_str else random.choice(available_styles)
                     row.append(InlineKeyboardButton(btn_name, url=btn_url, style=btn_style))
                 else:
-                    # Fallback syntax check (without color)
+                    # Fallback agar color nahi diya hai
                     match_fallback = re.search(r'\[(.+?)\]\(buttonurl:(.+?)\)', part, re.IGNORECASE)
                     if match_fallback:
                         btn_name = match_fallback.group(1).strip()
@@ -66,7 +66,7 @@ def parse_buttons(text):
     return clean_text.strip(), markup
 
 
-# 🔥 2. AUTO-DELETE MESSAGE 
+# 🔥 2. AUTO-DELETE MESSAGE (Telegram group se message hatane ke liye)
 async def auto_delete_message(message, delay_seconds):
     try:
         if delay_seconds > 0:
@@ -76,7 +76,7 @@ async def auto_delete_message(message, delay_seconds):
         pass
 
 
-# 🔥 3. AUTO-DELETE FILE 
+# 🔥 3. AUTO-DELETE FILE (Server storage bachane ke liye 6 min baad file delete)
 async def delayed_file_delete(file_paths, delay_seconds):
     try:
         await asyncio.sleep(delay_seconds)
@@ -87,6 +87,7 @@ async def delayed_file_delete(file_paths, delay_seconds):
         pass
 
 
+# --- Image Processing Functions ---
 def create_circular_pfp(pfp, size=(447, 447), brightness=1.3):
     pfp = pfp.resize(size, Image.Resampling.LANCZOS).convert("RGBA")
     pfp = ImageEnhance.Brightness(pfp).enhance(brightness)
@@ -137,6 +138,7 @@ def generate_welcome_image(pic_path, user_id, uname):
     return output_path
 
 
+# --- Commands ---
 @app.on_message(filters.command("welcome") & filters.group)
 async def toggle_welcome(client, message):
     user = await client.get_chat_member(message.chat.id, message.from_user.id)
@@ -165,13 +167,20 @@ async def set_custom_welcome(client, message):
 
     cmd_text = message.text.split(None, 1)[1] if len(message.command) > 1 else ""
     
+    # 🔥 Agar user ne sirf /set_welcome bheja hai bina detail ke, to example dikhao
     if not message.reply_to_message and not cmd_text:
-        return await message.reply(
-            "**⚠️ ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴍᴇssᴀɢᴇ ᴏʀ ᴛʏᴘᴇ ᴛᴇxᴛ ᴡɪᴛʜ ᴄᴏᴍᴍᴀɴᴅ ᴛᴏ sᴇᴛ ᴡᴇʟᴄᴏᴍᴇ!**\n\n"
-            "**sᴜᴘᴘᴏʀᴛᴇᴅ ᴠᴀʀɪᴀʙʟᴇs:**\n`{mention}`, `{id}`, `{username}`, `{count}`\n\n"
-            "**Bᴜᴛᴛᴏɴ Sʏɴᴛᴀx:**\n`[Button Name](buttonurl:https://t.me/THE_SHIV color:red)`\n"
-            "*(Colors: red, green, blue. Use | to put multiple buttons in same row)*"
+        example_text = (
+            "**⚠️ ᴡᴇʟᴄᴏᴍᴇ sᴇᴛ ᴋᴀʀɴᴇ ᴋᴇ ʟɪʏᴇ ᴋɪsɪ ᴍᴇssᴀɢᴇ (Pʜᴏᴛᴏ/Vɪᴅᴇᴏ/Gɪғ) ᴘᴀʀ ʀᴇᴘʟʏ ᴋᴀʀᴇɪɴ ʏᴀ ᴄᴏᴍᴍᴀɴᴅ ᴋᴇ sᴀᴀᴛʜ ᴛᴇxᴛ ʟɪᴋʜᴇɪɴ!**\n\n"
+            "**👇 ᴄᴏᴘʏ-ᴘᴀsᴛᴇ ᴇxᴀᴍᴘʟᴇ (Tᴏᴜᴄʜ ᴛᴏ ᴄᴏᴘʏ):**\n"
+            "`/set_welcome ❖ Hᴇʟʟᴏ {mention}!\n"
+            "❖ Wᴇʟᴄᴏᴍᴇ ᴛᴏ ᴏᴜʀ ɢʀᴏᴜᴘ.\n"
+            "❖ Yᴏᴜ ᴀʀᴇ ᴏᴜʀ {count}ᴛʜ ᴍᴇᴍʙᴇʀ.\n\n"
+            "[❤ Dᴇᴠᴇʟᴏᴘᴇʀ](buttonurl:https://t.me/THE_SHIV color:red) | [✅ Uᴘᴅᴀᴛᴇs](buttonurl:https://t.me/Channel color:green)\n"
+            "[🛠 Sᴜᴘᴘᴏʀᴛ](buttonurl:https://t.me/Support color:blue)`\n\n"
+            "**💡 Tɪᴘ:** Uᴘᴀʀ ᴡᴀʟᴇ ᴄᴏᴅᴇ ᴋᴏ ᴄᴏᴘʏ ᴋᴀʀᴋᴇ ʙʜᴇᴊ ᴅᴇɪɴ, ᴀᴀᴘᴋᴀ ᴡᴇʟᴄᴏᴍᴇ sᴇᴛ ʜᴏ ᴊᴀʏᴇɢᴀ!\n"
+            "⏱️ **Aᴜᴛᴏ-Dᴇʟᴇᴛᴇ:** Wᴇʟᴄᴏᴍᴇ ᴋᴏ ᴀᴜᴛᴏ ᴅᴇʟᴇᴛᴇ ᴋᴀʀɴᴇ ᴋᴇ ʟɪʏᴇ `/weltime 5` sᴇᴛ ᴋᴀʀᴇɪɴ."
         )
+        return await message.reply(example_text)
 
     reply = message.reply_to_message
     msg_type = "text"
@@ -191,6 +200,7 @@ async def set_custom_welcome(client, message):
         elif reply.sticker:
             msg_type, file_id = "sticker", reply.sticker.file_id
 
+    # Text aur buttons ko process karna
     clean_text, custom_markup = parse_buttons(raw_text)
     markup = custom_markup if custom_markup else (reply.reply_markup if reply else None)
 
@@ -221,6 +231,7 @@ async def set_weltime(client, message):
         pass
 
 
+# --- Welcome Event Handler ---
 @app.on_chat_member_updated(filters.group, group=-3)
 async def greet_new_member(client, member: ChatMemberUpdated):
     chat_id = member.chat.id
@@ -234,6 +245,7 @@ async def greet_new_member(client, member: ChatMemberUpdated):
     user = member.new_chat_member.user
     count = await client.get_chat_members_count(chat_id)
 
+    # Naya member aane par purana welcome delete karna
     if chat_id in last_welcome_msg:
         try:
             await last_welcome_msg[chat_id].delete()
@@ -244,6 +256,7 @@ async def greet_new_member(client, member: ChatMemberUpdated):
         welcome_img = None
         pic_path = None
         
+        # Agar admin ne custom welcome set kiya hai
         if chat_id in custom_welcomes:
             custom = custom_welcomes[chat_id]
             formatted_text = custom["text"].replace("{mention}", user.mention).replace("{id}", str(user.id)).replace("{username}", f"@{user.username}" if user.username else "None").replace("{count}", str(count))
@@ -259,6 +272,7 @@ async def greet_new_member(client, member: ChatMemberUpdated):
             elif custom["type"] == "sticker":
                 msg = await client.send_sticker(chat_id, sticker=custom["file_id"], reply_markup=custom["markup"])
                 
+        # Agar custom nahi hai to default Image Welcome
         else:
             pic_path = "PritiMusic/assets/upic.png"
             if user.photo:
@@ -273,7 +287,6 @@ async def greet_new_member(client, member: ChatMemberUpdated):
             
             caption = f"**⎊─────☵ ᴡᴇʟᴄᴏᴍᴇ ☵─────⎊**\n\n**☉ ɴᴀᴍᴇ ⧽** {user.mention}\n**☉ ɪᴅ ⧽** `{user.id}`\n**☉ ᴛᴏᴛᴀʟ ᴍᴇᴍʙᴇʀs ⧽** {count}\n\n**⎉──────▢✭ 侖 ✭▢──────⎉**"
             
-            # Default welcome me bhi random colors laga diye
             styles = [ButtonStyle.PRIMARY, ButtonStyle.SUCCESS, ButtonStyle.DANGER]
             markup = InlineKeyboardMarkup([
                 [InlineKeyboardButton("๏ ᴠɪᴇᴡ ᴍᴇᴍʙᴇʀ ๏", url=f"tg://openmessage?user_id={user.id}", style=random.choice(styles))], 
@@ -287,11 +300,11 @@ async def greet_new_member(client, member: ChatMemberUpdated):
 
         last_welcome_msg[chat_id] = msg
         
-        # 🔥 SERVER STORAGE CLEANUP (6 minutes)
+        # 🔥 SERVER STORAGE CLEANUP (6 minutes / 360 seconds delay)
         files_to_delete = [welcome_img, pic_path]
         asyncio.create_task(delayed_file_delete(files_to_delete, 360))
             
-        # 🔥 CHAT MESSAGE CLEANUP (User set time)
+        # 🔥 CHAT MESSAGE CLEANUP (User set time, default 5 mins / 300 seconds)
         delay = weltime_state.get(chat_id, 300) 
         asyncio.create_task(auto_delete_message(msg, delay))
 
