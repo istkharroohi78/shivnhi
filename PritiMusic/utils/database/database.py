@@ -54,7 +54,6 @@ video = {}
 
 # Total Queries on bot
 
-
 async def get_queries() -> int:
     chat_id = 98324
     mode = await queriesdb.find_one({"chat_id": chat_id})
@@ -135,6 +134,10 @@ async def set_assistant_new(chat_id, number):
 async def set_assistant(chat_id):
     from PritiMusic.core.userbot import assistants
 
+    # Crash Fix: Wait if assistant list is empty during startup
+    if not assistants:
+        raise Exception("Assistant is starting up. Please try again in 5-10 seconds.")
+
     ran_assistant = random.choice(assistants)
     assistantdict[chat_id] = ran_assistant
     await assdb.update_one(
@@ -175,6 +178,10 @@ async def get_assistant(chat_id: int) -> str:
 
 async def set_calls_assistant(chat_id):
     from PritiMusic.core.userbot import assistants
+
+    # Crash Fix: Wait if assistant list is empty during startup
+    if not assistants:
+        raise Exception("Assistant is starting up. Please try again in 5-10 seconds.")
 
     ran_assistant = random.choice(assistants)
     assistantdict[chat_id] = ran_assistant
