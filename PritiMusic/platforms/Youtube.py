@@ -65,10 +65,6 @@ async def _async_run(func, *args, **kwargs):
 
 # ----------------- SMART UNIFIED DOWNLOADER -----------------
 async def smart_downloader(link: str, d_type: str, title: str = None) -> str:
-    """
-    Ek akela smart function jo saari APIs ko sequentially check karega
-    aur time limit ke bina (timeout=None) file download karega.
-    """
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     video_id = extract_video_id(link)
     if not video_id or len(video_id) < 3: return None
@@ -103,28 +99,54 @@ async def smart_downloader(link: str, d_type: str, title: str = None) -> str:
                 async with session.get(api["url"], params=api["params"]) as resp:
                     if resp.status == 200:
                         content_type = resp.headers.get("Content-Type", "").lower()
-                        # HTML/JSON error messages ko ignore karo
-                        if "json" not in content_type and "text/html" not in content_type:
+                        
+                        # 🔥 FIX 1: API JSON Link Extractor (For Shruti & OneGrab)
+                        if "application/json" in content_type:
+                            data = await resp.json()
+                            download_url = data.get("url") or data.get("download_url") or data.get("link")
+                            
+                            if download_url:
+                                LOGGER.info(f"👉 {api['name']} returned a link. Fetching file...")
+                                async with session.get(download_url) as file_resp:
+                                    with open(filepath, "wb") as f:
+                                        async for chunk in file_resp.content.iter_chunked(131072):
+                                            f.write(chunk)
+                            else:
+                                LOGGER.warning(f"🔴 {api['name']} API JSON Error/Limit: {data}")
+                        
+                        # 🔥 FIX 2: Direct stream handler (For Apixhub & Worker)
+                        elif "text/html" not in content_type:
                             with open(filepath, "wb") as f:
                                 async for chunk in resp.content.iter_chunked(131072):
                                     f.write(chunk)
-                            
-                            # Size check (>50KB) successful
-                            if os.path.exists(filepath) and os.path.getsize(filepath) > 50000:
-                                LOGGER.info(f"🟢 SUCCESS: Downloaded '{safe_title}' via {api['name']} API!")
-                                return filepath
+                        
+                        # Check if file downloaded successfully (>50KB)
+                        if os.path.exists(filepath) and os.path.getsize(filepath) > 50000:
+                            LOGGER.info(f"🟢 SUCCESS: Downloaded '{safe_title}' via {api['name']} API!")
+                            return filepath
+                        else:
+                            LOGGER.warning(f"🔴 {api['name']} API File Rejected: Size too small (Error file).")
+                    else:
+                        LOGGER.warning(f"🔴 {api['name']} API HTTP Error: {resp.status}")
+                        
             except Exception as e:
-                LOGGER.warning(f"🔴 {api['name']} API Failed: {str(e)}")
+                LOGGER.warning(f"🔴 {api['name']} API Connection Failed: {str(e)}")
             
-            # Agar file adhi download hokar fat gayi, to use delete karo agle API par jane se pehle
+            # Agar file adhi download hokar fat gayi ya 50KB se choti thi, to use delete karo
             if os.path.exists(filepath):
                 try: os.remove(filepath)
                 except: pass
 
-    # --- 5. YT-DLP FALLBACK (Agar saari APIs dead ho jayein) ---
+    # --- 5. YT-DLP FALLBACK (Flexible Format Fix) ---
     LOGGER.info(f"All APIs failed. Falling back to yt-dlp for {safe_title}...")
+    
+    if d_type == "video":
+        format_string = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
+    else:
+        format_string = "bestaudio[ext=m4a]/bestaudio/best/ba"
+
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best' if d_type == "video" else 'ba/b/best',
+        'format': format_string,
         'outtmpl': filepath,
         'quiet': True,
         'no_warnings': True,
@@ -132,8 +154,8 @@ async def smart_downloader(link: str, d_type: str, title: str = None) -> str:
         'nocheckcertificate': True,
         'noplaylist': True,
         'ignoreerrors': True,
-        'extractor_args': {'youtube': ['player_client=tv,android,web']},
-        'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        'extractor_args': {'youtube': ['player_client=android,web']},
+        'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
     }
     if os.path.exists('cookies.txt'):
         ydl_opts['cookiefile'] = 'cookies.txt'
