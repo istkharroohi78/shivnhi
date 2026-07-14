@@ -1,4 +1,5 @@
 import os
+import re
 import random
 import asyncio
 from logging import getLogger
@@ -9,15 +10,74 @@ from pyrogram.types import ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboa
 
 LOGGER = getLogger(__name__)
 
-# --- Simple In-Memory Database ---
+# --- In-Memory Database ---
 welcome_state = {}  # {chat_id: True/False}
 last_welcome_msg = {}  # {chat_id: message_id}
+custom_welcomes = {}  # {chat_id: data}
+weltime_state = {}  # {chat_id: seconds_to_delete}
 
 
+# 🔥 1. BUTTON PARSER (Colors: red, green, blue)
+def parse_buttons(text):
+    if not text:
+        return text, None
+    
+    clean_text = ""
+    buttons = []
+    
+    available_styles = [ButtonStyle.PRIMARY, ButtonStyle.SUCCESS, ButtonStyle.DANGER]
+    color_map = {
+        "red": ButtonStyle.DANGER,
+        "green": ButtonStyle.SUCCESS,
+        "blue": ButtonStyle.PRIMARY
+    }
+    
+    for line in text.split("\n"):
+        if re.search(r'\[.+?\]\(buttonurl:.+?\)', line, re.IGNORECASE):
+            row = []
+            parts = line.split("|")
+            for part in parts:
+                match = re.search(r'\[(.+?)\]\(buttonurl:([^\s\)]+)(?:\s+color:(red|green|blue))?\)', part, re.IGNORECASE)
+                if match:
+                    btn_name = match.group(1).strip()
+                    btn_url = match.group(2).strip()
+                    color_str = match.group(3)
+                    
+                    btn_style = color_map[color_str.lower()] if color_str else random.choice(available_styles)
+                    row.append(InlineKeyboardButton(btn_name, url=btn_url, style=btn_style))
+                else:
+                    match_fallback = re.search(r'\[(.+?)\]\(buttonurl:(.+?)\)', part, re.IGNORECASE)
+                    if match_fallback:
+                        btn_name = match_fallback.group(1).strip()
+                        btn_url = match_fallback.group(2).strip()
+                        row.append(InlineKeyboardButton(btn_name, url=btn_url, style=random.choice(available_styles)))
+                        
+            if row:
+                buttons.append(row)
+        else:
+            clean_text += line + "\n"
+            
+    markup = InlineKeyboardMarkup(buttons) if buttons else None
+    return clean_text.strip(), markup
+
+
+# 🔥 2. AUTO-DELETE MESSAGE (Chat se hatane ke liye)
 async def auto_delete_message(message, delay_seconds):
     try:
+        if delay_seconds > 0:
+            await asyncio.sleep(delay_seconds)
+            await message.delete()
+    except Exception:
+        pass
+
+
+# 🔥 3. AUTO-DELETE FILE (Server storage bachane ke liye 6 min baad)
+async def delayed_file_delete(file_paths, delay_seconds):
+    try:
         await asyncio.sleep(delay_seconds)
-        await message.delete()
+        for path in file_paths:
+            if path and os.path.exists(path) and "assets" not in path:
+                os.remove(path)
     except Exception:
         pass
 
@@ -73,7 +133,7 @@ def generate_welcome_image(pic_path, user_id, uname):
     return output_path
 
 
-# 🔴 NOTE: Yahan `@Client.on_message` lagaya hai (Clone bots ke liye)
+# 🔴 Toggle Welcome
 @Client.on_message(filters.command("welcome") & filters.group)
 async def toggle_welcome(client, message):
     user = await client.get_chat_member(message.chat.id, message.from_user.id)
@@ -94,7 +154,79 @@ async def toggle_welcome(client, message):
         await message.reply(f"**ᴅɪsᴀʙʟᴇᴅ ᴡᴇʟᴄᴏᴍᴇ ɴᴏᴛɪғɪᴄᴀᴛɪᴏɴ ɪɴ {message.chat.title}**")
 
 
-# 🔴 NOTE: Yahan bhi `@Client.on_chat_member_updated` lagaya hai
+# 🔴 Set Custom Welcome
+@Client.on_message(filters.command("set_welcome") & filters.group)
+async def set_custom_welcome(client, message):
+    user = await client.get_chat_member(message.chat.id, message.from_user.id)
+    if user.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
+        return await message.reply("**sᴏʀʀʏ ᴏɴʟʏ ᴀᴅᴍɪɴs ᴄᴀɴ ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ!**")
+
+    cmd_text = message.text.split(None, 1)[1] if len(message.command) > 1 else ""
+    
+    if not message.reply_to_message and not cmd_text:
+        example_text = (
+            "**⚠️ ᴡᴇʟᴄᴏᴍᴇ sᴇᴛ ᴋᴀʀɴᴇ ᴋᴇ ʟɪʏᴇ ᴋɪsɪ ᴍᴇssᴀɢᴇ (Pʜᴏᴛᴏ/Vɪᴅᴇᴏ/Gɪғ) ᴘᴀʀ ʀᴇᴘʟʏ ᴋᴀʀᴇɪɴ ʏᴀ ᴄᴏᴍᴍᴀɴᴅ ᴋᴇ sᴀᴀᴛʜ ᴛᴇxᴛ ʟɪᴋʜᴇɪɴ!**\n\n"
+            "**👇 ᴄᴏᴘʏ-ᴘᴀsᴛᴇ ᴇxᴀᴍᴘʟᴇ:**\n"
+            "`/set_welcome ❖ Hᴇʟʟᴏ {mention}!\n"
+            "❖ Wᴇʟᴄᴏᴍᴇ ᴛᴏ ᴏᴜʀ ɢʀᴏᴜᴘ.\n"
+            "❖ Yᴏᴜ ᴀʀᴇ ᴏᴜʀ {count}ᴛʜ ᴍᴇᴍʙᴇʀ.\n\n"
+            "[❤ Dᴇᴠᴇʟᴏᴘᴇʀ](buttonurl:https://t.me/THE_SHIV color:red) | [✅ Uᴘᴅᴀᴛᴇs](buttonurl:https://t.me/Channel color:green)\n"
+            "[🛠 Sᴜᴘᴘᴏʀᴛ](buttonurl:https://t.me/Support color:blue)`\n\n"
+            "**💡 Tɪᴘ:** Uᴘᴀʀ ᴡᴀʟᴇ ᴄᴏᴅᴇ ᴋᴏ ᴄᴏᴘʏ ᴋᴀʀᴋᴇ ʙʜᴇᴊ ᴅᴇɪɴ, ᴀᴀᴘᴋᴀ ᴡᴇʟᴄᴏᴍᴇ sᴇᴛ ʜᴏ ᴊᴀʏᴇɢᴀ!\n"
+            "⏱️ **Aᴜᴛᴏ-Dᴇʟᴇᴛᴇ:** Wᴇʟᴄᴏᴍᴇ ᴋᴏ ᴀᴜᴛᴏ ᴅᴇʟᴇᴛᴇ ᴋᴀʀɴᴇ ᴋᴇ ʟɪʏᴇ `/weltime 5` sᴇᴛ ᴋᴀʀᴇɪɴ."
+        )
+        return await message.reply(example_text)
+
+    reply = message.reply_to_message
+    msg_type = "text"
+    file_id = None
+    
+    raw_text = cmd_text
+    if reply:
+        if not raw_text:
+            raw_text = reply.text.markdown if reply.text else (reply.caption.markdown if reply.caption else "")
+        
+        if reply.photo:
+            msg_type, file_id = "photo", reply.photo.file_id
+        elif reply.video:
+            msg_type, file_id = "video", reply.video.file_id
+        elif reply.animation:
+            msg_type, file_id = "animation", reply.animation.file_id
+        elif reply.sticker:
+            msg_type, file_id = "sticker", reply.sticker.file_id
+
+    clean_text, custom_markup = parse_buttons(raw_text)
+    markup = custom_markup if custom_markup else (reply.reply_markup if reply else None)
+
+    custom_welcomes[message.chat.id] = {"type": msg_type, "file_id": file_id, "text": clean_text, "markup": markup}
+    await message.reply("**✅ ᴄᴜsᴛᴏᴍ ᴡᴇʟᴄᴏᴍᴇ ᴡɪᴛʜ ʙᴜᴛᴛᴏɴs sᴇᴛ sᴜᴄᴄᴇssғᴜʟʟʏ!**")
+
+
+# 🔴 Set Auto-Delete Time
+@Client.on_message(filters.command("weltime") & filters.group)
+async def set_weltime(client, message):
+    user = await client.get_chat_member(message.chat.id, message.from_user.id)
+    if user.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
+        return await message.reply("**sᴏʀʀʏ ᴏɴʟʏ ᴀᴅᴍɪɴs ᴄᴀɴ ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ!**")
+
+    if len(message.command) != 2:
+        return await message.reply("**ᴜsᴀɢᴇ:**\n**⦿ /weltime [minutes|off]** (e.g., /weltime 5)")
+
+    val = message.command[1].lower()
+    
+    if val == "off":
+        weltime_state[message.chat.id] = 0
+        return await message.reply("**✅ ᴡᴇʟᴄᴏᴍᴇ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ᴅɪsᴀʙʟᴇᴅ.**")
+
+    try:
+        minutes = int(val)
+        weltime_state[message.chat.id] = minutes * 60
+        await message.reply(f"**✅ ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇs ᴡɪʟʟ ɴᴏᴡ ʙᴇ ᴅᴇʟᴇᴛᴇᴅ ᴀғᴛᴇʀ {minutes} ᴍɪɴᴜᴛᴇs.**")
+    except ValueError:
+        pass
+
+
+# 🔴 Chat Member Updated Event
 @Client.on_chat_member_updated(filters.group, group=-3)
 async def greet_new_member(client, member: ChatMemberUpdated):
     chat_id = member.chat.id
@@ -115,22 +247,42 @@ async def greet_new_member(client, member: ChatMemberUpdated):
             pass
 
     try:
-        pic_path = "PritiMusic/assets/upic.png"
-        if user.photo:
-            try:
-                os.makedirs("downloads", exist_ok=True)
-                pic_path = await client.download_media(user.photo.big_file_id, file_name=f"downloads/pp{user.id}.png")
-            except Exception:
-                pass
+        welcome_img = None
+        pic_path = None
+        
+        # Agar admin ne custom welcome set kiya hai
+        if chat_id in custom_welcomes:
+            custom = custom_welcomes[chat_id]
+            formatted_text = custom["text"].replace("{mention}", user.mention).replace("{id}", str(user.id)).replace("{username}", f"@{user.username}" if user.username else "None").replace("{count}", str(count))
+            
+            if custom["type"] == "text":
+                msg = await client.send_message(chat_id, text=formatted_text, reply_markup=custom["markup"])
+            elif custom["type"] == "photo":
+                msg = await client.send_photo(chat_id, photo=custom["file_id"], caption=formatted_text, reply_markup=custom["markup"])
+            elif custom["type"] == "video":
+                msg = await client.send_video(chat_id, video=custom["file_id"], caption=formatted_text, reply_markup=custom["markup"])
+            elif custom["type"] == "animation":
+                msg = await client.send_animation(chat_id, animation=custom["file_id"], caption=formatted_text, reply_markup=custom["markup"])
+            elif custom["type"] == "sticker":
+                msg = await client.send_sticker(chat_id, sticker=custom["file_id"], reply_markup=custom["markup"])
+                
+        # Agar custom nahi hai to default Image Welcome
+        else:
+            pic_path = "PritiMusic/assets/upic.png"
+            if user.photo:
+                try:
+                    os.makedirs("downloads", exist_ok=True)
+                    pic_path = await client.download_media(user.photo.big_file_id, file_name=f"downloads/pp{user.id}.png")
+                except Exception:
+                    pass
 
-        uname = user.username or "None"
-        welcome_img = generate_welcome_image(pic_path, user.id, uname)
-        
-        # 🔴 NOTE: Clone bot ka apna username nikalne ke liye
-        bot_info = await client.get_me()
-        bot_username = bot_info.username
-        
-        caption = f"""
+            welcome_img = generate_welcome_image(pic_path, user.id, user.username or "None")
+            
+            # Clone bot ka apna username nikalne ke liye
+            bot_info = await client.get_me()
+            bot_username = bot_info.username
+            
+            caption = f"""
 **⎊─────☵ ᴡᴇʟᴄᴏᴍᴇ ☵─────⎊**
 
 **▬▭▬▭▬▭▬▭▬▭▬▭▬▭▬**
@@ -144,28 +296,27 @@ async def greet_new_member(client, member: ChatMemberUpdated):
 
 **⎉──────▢✭ 侖 ✭▢──────⎉**
 """
-        styles = [ButtonStyle.PRIMARY, ButtonStyle.SUCCESS, ButtonStyle.DANGER]
+            styles = [ButtonStyle.PRIMARY, ButtonStyle.SUCCESS, ButtonStyle.DANGER]
 
-        markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("๏ ᴠɪᴇᴡ ɴᴇᴡ ᴍᴇᴍʙᴇʀ ๏", url=f"tg://openmessage?user_id={user.id}", style=random.choice(styles))],
-            [InlineKeyboardButton("✙ ᴋɪᴅɴᴀᴘ ᴍᴇ ✙", url=f"https://t.me/{bot_username}?startgroup=true", style=random.choice(styles))],
-        ])
+            markup = InlineKeyboardMarkup([
+                [InlineKeyboardButton("๏ ᴠɪᴇᴡ ɴᴇᴡ ᴍᴇᴍʙᴇʀ ๏", url=f"tg://openmessage?user_id={user.id}", style=random.choice(styles))],
+                [InlineKeyboardButton("✙ ᴋɪᴅɴᴀᴘ ᴍᴇ ✙", url=f"https://t.me/{bot_username}?startgroup=true", style=random.choice(styles))],
+            ])
 
-        if welcome_img:
-            msg = await client.send_photo(chat_id, photo=welcome_img, caption=caption, reply_markup=markup)
-        else:
-            msg = await client.send_message(chat_id, text=caption, reply_markup=markup)
+            if welcome_img:
+                msg = await client.send_photo(chat_id, photo=welcome_img, caption=caption, reply_markup=markup)
+            else:
+                msg = await client.send_message(chat_id, text=caption, reply_markup=markup)
 
         last_welcome_msg[chat_id] = msg
         
-        asyncio.create_task(auto_delete_message(msg, 120))
-        
-        # Files Cleanup
-        if welcome_img and os.path.exists(welcome_img):
-            os.remove(welcome_img)
-        if pic_path and os.path.exists(pic_path) and "assets" not in pic_path:
-            os.remove(pic_path)
+        # 🔥 SERVER STORAGE CLEANUP (6 min / 360 sec delay)
+        files_to_delete = [welcome_img, pic_path]
+        asyncio.create_task(delayed_file_delete(files_to_delete, 360))
+            
+        # 🔥 CHAT MESSAGE CLEANUP (User set time, default 5 mins / 300 seconds)
+        delay = weltime_state.get(chat_id, 300) 
+        asyncio.create_task(auto_delete_message(msg, delay))
 
     except Exception as e:
         LOGGER.error(f"Welcome Error: {e}")
-        
