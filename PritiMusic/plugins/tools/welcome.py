@@ -1,4 +1,5 @@
 import os
+import re
 import random
 import asyncio  
 from logging import getLogger
@@ -18,7 +19,54 @@ custom_welcomes = {}
 weltime_state = {}    
 
 
-# 🔥 1. AUTO-DELETE MESSAGE (Message ko group se delete karne ke liye)
+# 🔥 1. UPDATED BUTTON PARSER (With Colors: red, green, blue)
+def parse_buttons(text):
+    if not text:
+        return text, None
+    
+    clean_text = ""
+    buttons = []
+    
+    available_styles = [ButtonStyle.PRIMARY, ButtonStyle.SUCCESS, ButtonStyle.DANGER]
+    color_map = {
+        "red": ButtonStyle.DANGER,
+        "green": ButtonStyle.SUCCESS,
+        "blue": ButtonStyle.PRIMARY
+    }
+    
+    for line in text.split("\n"):
+        if re.search(r'\[.+?\]\(buttonurl:.+?\)', line, re.IGNORECASE):
+            row = []
+            parts = line.split("|")
+            for part in parts:
+                # Match syntax with optional color
+                match = re.search(r'\[(.+?)\]\(buttonurl:([^\s\)]+)(?:\s+color:(red|green|blue))?\)', part, re.IGNORECASE)
+                if match:
+                    btn_name = match.group(1).strip()
+                    btn_url = match.group(2).strip()
+                    color_str = match.group(3)
+                    
+                    # Agar color diya hai toh wo set hoga, warna random
+                    btn_style = color_map[color_str.lower()] if color_str else random.choice(available_styles)
+                    row.append(InlineKeyboardButton(btn_name, url=btn_url, style=btn_style))
+                else:
+                    # Fallback syntax check (without color)
+                    match_fallback = re.search(r'\[(.+?)\]\(buttonurl:(.+?)\)', part, re.IGNORECASE)
+                    if match_fallback:
+                        btn_name = match_fallback.group(1).strip()
+                        btn_url = match_fallback.group(2).strip()
+                        row.append(InlineKeyboardButton(btn_name, url=btn_url, style=random.choice(available_styles)))
+                        
+            if row:
+                buttons.append(row)
+        else:
+            clean_text += line + "\n"
+            
+    markup = InlineKeyboardMarkup(buttons) if buttons else None
+    return clean_text.strip(), markup
+
+
+# 🔥 2. AUTO-DELETE MESSAGE 
 async def auto_delete_message(message, delay_seconds):
     try:
         if delay_seconds > 0:
@@ -28,14 +76,14 @@ async def auto_delete_message(message, delay_seconds):
         pass
 
 
-# 🔥 2. AUTO-DELETE FILE (Server se file 6 min baad delete karne ke liye)
+# 🔥 3. AUTO-DELETE FILE 
 async def delayed_file_delete(file_paths, delay_seconds):
     try:
         await asyncio.sleep(delay_seconds)
         for path in file_paths:
             if path and os.path.exists(path) and "assets" not in path:
                 os.remove(path)
-    except Exception as e:
+    except Exception:
         pass
 
 
@@ -115,30 +163,39 @@ async def set_custom_welcome(client, message):
     if user.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
         return await message.reply("**sᴏʀʀʏ ᴏɴʟʏ ᴀᴅᴍɪɴs ᴄᴀɴ ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ!**")
 
-    if not message.reply_to_message:
+    cmd_text = message.text.split(None, 1)[1] if len(message.command) > 1 else ""
+    
+    if not message.reply_to_message and not cmd_text:
         return await message.reply(
-            "**⚠️ ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴍᴇssᴀɢᴇ (ᴛᴇxᴛ, ᴘʜᴏᴛᴏ, ᴠɪᴅᴇᴏ, ɢɪғ, sᴛɪᴄᴋᴇʀ) ᴛᴏ sᴇᴛ ɪᴛ ᴀs ᴛʜᴇ ᴄᴜsᴛᴏᴍ ᴡᴇʟᴄᴏᴍᴇ!**\n\n"
-            "**sᴜᴘᴘᴏʀᴛᴇᴅ ᴠᴀʀɪᴀʙʟᴇs:**\n`{mention}`, `{id}`, `{username}`, `{count}`"
+            "**⚠️ ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴍᴇssᴀɢᴇ ᴏʀ ᴛʏᴘᴇ ᴛᴇxᴛ ᴡɪᴛʜ ᴄᴏᴍᴍᴀɴᴅ ᴛᴏ sᴇᴛ ᴡᴇʟᴄᴏᴍᴇ!**\n\n"
+            "**sᴜᴘᴘᴏʀᴛᴇᴅ ᴠᴀʀɪᴀʙʟᴇs:**\n`{mention}`, `{id}`, `{username}`, `{count}`\n\n"
+            "**Bᴜᴛᴛᴏɴ Sʏɴᴛᴀx:**\n`[Button Name](buttonurl:https://t.me/THE_SHIV color:red)`\n"
+            "*(Colors: red, green, blue. Use | to put multiple buttons in same row)*"
         )
 
     reply = message.reply_to_message
     msg_type = "text"
     file_id = None
     
-    text = reply.text.markdown if reply.text else (reply.caption.markdown if reply.caption else "")
-    markup = reply.reply_markup
+    raw_text = cmd_text
+    if reply:
+        if not raw_text:
+            raw_text = reply.text.markdown if reply.text else (reply.caption.markdown if reply.caption else "")
+        
+        if reply.photo:
+            msg_type, file_id = "photo", reply.photo.file_id
+        elif reply.video:
+            msg_type, file_id = "video", reply.video.file_id
+        elif reply.animation:
+            msg_type, file_id = "animation", reply.animation.file_id
+        elif reply.sticker:
+            msg_type, file_id = "sticker", reply.sticker.file_id
 
-    if reply.photo:
-        msg_type, file_id = "photo", reply.photo.file_id
-    elif reply.video:
-        msg_type, file_id = "video", reply.video.file_id
-    elif reply.animation:
-        msg_type, file_id = "animation", reply.animation.file_id
-    elif reply.sticker:
-        msg_type, file_id = "sticker", reply.sticker.file_id
+    clean_text, custom_markup = parse_buttons(raw_text)
+    markup = custom_markup if custom_markup else (reply.reply_markup if reply else None)
 
-    custom_welcomes[message.chat.id] = {"type": msg_type, "file_id": file_id, "text": text, "markup": markup}
-    await message.reply("**✅ ᴄᴜsᴛᴏᴍ ᴡᴇʟᴄᴏᴍᴇ sᴇᴛ sᴜᴄᴄᴇssғᴜʟʟʏ!**")
+    custom_welcomes[message.chat.id] = {"type": msg_type, "file_id": file_id, "text": clean_text, "markup": markup}
+    await message.reply("**✅ ᴄᴜsᴛᴏᴍ ᴡᴇʟᴄᴏᴍᴇ ᴡɪᴛʜ ʙᴜᴛᴛᴏɴs sᴇᴛ sᴜᴄᴄᴇssғᴜʟʟʏ!**")
 
 
 @app.on_message(filters.command("weltime") & filters.group)
@@ -215,7 +272,13 @@ async def greet_new_member(client, member: ChatMemberUpdated):
             bot_username = app.username if hasattr(app, "username") and app.username else "Bot"
             
             caption = f"**⎊─────☵ ᴡᴇʟᴄᴏᴍᴇ ☵─────⎊**\n\n**☉ ɴᴀᴍᴇ ⧽** {user.mention}\n**☉ ɪᴅ ⧽** `{user.id}`\n**☉ ᴛᴏᴛᴀʟ ᴍᴇᴍʙᴇʀs ⧽** {count}\n\n**⎉──────▢✭ 侖 ✭▢──────⎉**"
-            markup = InlineKeyboardMarkup([[InlineKeyboardButton("๏ ᴠɪᴇᴡ ᴍᴇᴍʙᴇʀ ๏", url=f"tg://openmessage?user_id={user.id}")], [InlineKeyboardButton("✙ ᴋɪᴅɴᴀᴘ ᴍᴇ ✙", url=f"https://t.me/{bot_username}?startgroup=true")]])
+            
+            # Default welcome me bhi random colors laga diye
+            styles = [ButtonStyle.PRIMARY, ButtonStyle.SUCCESS, ButtonStyle.DANGER]
+            markup = InlineKeyboardMarkup([
+                [InlineKeyboardButton("๏ ᴠɪᴇᴡ ᴍᴇᴍʙᴇʀ ๏", url=f"tg://openmessage?user_id={user.id}", style=random.choice(styles))], 
+                [InlineKeyboardButton("✙ ᴋɪᴅɴᴀᴘ ᴍᴇ ✙", url=f"https://t.me/{bot_username}?startgroup=true", style=random.choice(styles))]
+            ])
 
             if welcome_img:
                 msg = await client.send_photo(chat_id, photo=welcome_img, caption=caption, reply_markup=markup)
@@ -224,11 +287,11 @@ async def greet_new_member(client, member: ChatMemberUpdated):
 
         last_welcome_msg[chat_id] = msg
         
-        # 🔥 SERVER STORAGE CLEANUP (Ab yeh 6 Minutes / 360 Seconds wait karega delete hone se pehle)
+        # 🔥 SERVER STORAGE CLEANUP (6 minutes)
         files_to_delete = [welcome_img, pic_path]
         asyncio.create_task(delayed_file_delete(files_to_delete, 360))
             
-        # 🔥 CHAT MESSAGE CLEANUP (Telegram group me message delete hone ka timer, default 5 mins)
+        # 🔥 CHAT MESSAGE CLEANUP (User set time)
         delay = weltime_state.get(chat_id, 300) 
         asyncio.create_task(auto_delete_message(msg, delay))
 
