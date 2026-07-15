@@ -6,9 +6,8 @@ import random
 from sys import argv
 from datetime import datetime, timedelta
 
-from pyrogram import idle, StopPropagation
+from pyrogram import idle
 from pyrogram import Client, filters
-from pyrogram.handlers import MessageHandler
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import (
     AccessTokenExpired,
@@ -54,9 +53,6 @@ CLONES = set()
 ACTIVE_CLONES = {} 
 CLONE_LIMIT = 500 
 
-# ✅ NEW DB FOR MUST JOIN SYSTEM
-fsdb = mongodb["force_subscribe_db"]
-
 # ✅ Safe Logger Fallback
 LOG_CHAT = CLONE_LOGGER if CLONE_LOGGER else LOGGER_ID
 
@@ -93,73 +89,18 @@ def get_random_start_img():
         return START_IMG_URL
     return "https://files.catbox.moe/zbl2i7.jpg"
 
-# --- 🔥 MUST JOIN (FORCE SUBSCRIBE) CHECKER WITH CACHE ---
-fsub_cache = {}
-
+# --- 🔥 MUST JOIN (FORCE SUBSCRIBE) CHECKER FOR NEW CLONES ONLY 🔥 ---
 async def check_fsub(client, user_id):
     if user_id == OWNER_ID:
         return True
     try:
-        # ✅ HARDCODED AS REQUESTED
         await client.get_chat_member("betabot_support", user_id)
         await client.get_chat_member("betabot_hub", user_id)
         return True
     except UserNotParticipant:
         return False
     except Exception:
-        return True # Fallback if bot is not admin in channel
-
-async def cached_check_fsub(client, user_id):
-    now = datetime.now()
-    if user_id in fsub_cache:
-        data = fsub_cache[user_id]
-        if (now - data["time"]).total_seconds() < 300: # 5 minutes cache to prevent lag
-            return data["status"]
-    status = await check_fsub(client, user_id)
-    fsub_cache[user_id] = {"status": status, "time": now}
-    return status
-
-# --- 🔥 SORRY BOSS INTERCEPTOR (FREEZE SYSTEM) 🔥 ---
-async def clone_fsub_middleware(client, message):
-    if not message.from_user or not message.text:
-        return
-        
-    if not message.text.startswith("/"):
-        return 
-        
-    bot_id = client.me.id if getattr(client, "me", None) else None
-    if not bot_id:
-        bot_me = await client.get_me()
-        bot_id = bot_me.id
-        
-    owner_id = getattr(client, "owner_id", None)
-    if not owner_id:
-        db_data = await clonebotdb.find_one({"bot_id": bot_id})
-        if db_data:
-            owner_id = db_data.get("user_id")
-            client.owner_id = owner_id
-            
-    if owner_id:
-        is_joined = await cached_check_fsub(app, owner_id) 
-        if not is_joined:
-            if message.from_user.id == owner_id:
-                # ✅ HARDCODED BUTTONS
-                btn = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📢 Join Channel", url="https://t.me/betabot_hub"),
-                     InlineKeyboardButton("💬 Join Group", url="https://t.me/betabot_support")],
-                ])
-                await message.reply_text(
-                    "⚠️ **SORRY BOSS!**\n\n"
-                    "**Until you didn't join our channel and support, I'll not started.**\n"
-                    "**Please join first to enjoy your bot!**",
-                    reply_markup=btn
-                )
-            else:
-                await message.reply_text("⚠️ **This bot is currently frozen because its owner hasn't joined the official support network.**")
-            
-            # 🔥 StopPropagation will block all normal bot commands immediately
-            raise StopPropagation
-
+        return True 
 
 async def delayed_start(bot_token, session_string, wait_time, bot_number):
     logging.warning(f"⏳ Clone {bot_number} background wait started: {wait_time}s")
@@ -174,8 +115,6 @@ async def delayed_start(bot_token, session_string, wait_time, bot_number):
             plugins=dict(root="PritiMusic.cplugin"),
             in_memory=True,
         )
-        # Adding Freeze Middleware
-        ai.add_handler(MessageHandler(clone_fsub_middleware), group=-1)
 
         await ai.start()
         
@@ -217,7 +156,6 @@ async def clone_txt(client, message, _):
     # --- 🔥 MUST JOIN FOR NEW CLONING ---
     is_joined = await check_fsub(client, message.from_user.id)
     if not is_joined:
-        # ✅ HARDCODED BUTTONS
         btn = InlineKeyboardMarkup([
             [InlineKeyboardButton("📢 Join Channel", url="https://t.me/betabot_hub"),
              InlineKeyboardButton("💬 Join Group", url="https://t.me/betabot_support")],
@@ -281,8 +219,6 @@ async def clone_txt(client, message, _):
                 plugins=dict(root="PritiMusic.cplugin"),
                 in_memory=True, 
             )
-            # Adding Freeze Middleware
-            ai.add_handler(MessageHandler(clone_fsub_middleware), group=-1)
 
             await ai.start()
             bot = await ai.get_me()
@@ -480,9 +416,6 @@ async def restart_bots():
                     plugins=dict(root="PritiMusic.cplugin"),
                     in_memory=True,
                 )
-                
-                # Adding Freeze Middleware on restart
-                ai.add_handler(MessageHandler(clone_fsub_middleware), group=-1)
 
                 try:
                     await ai.start()
@@ -538,8 +471,370 @@ async def restart_bots():
 
 
 # ===================================================
-# --- BOTS LIST COMMAND ---
+# --- ALL THE RESTORED COMMANDS ---
 # ===================================================
+
+@app.on_message(filters.command("delallclone") & filters.user(OWNER_ID))
+@language
+async def delete_all_cloned_bots(client, message, _):
+    try:
+        await message.reply_text(_["C_B_H_14"])
+        
+        count = 0
+        for bot_id, bot_client in list(ACTIVE_CLONES.items()):
+            try:
+                await bot_client.stop()
+                count += 1
+            except:
+                pass
+        ACTIVE_CLONES.clear()
+
+        await clonebotdb.delete_many({})
+        CLONES.clear()
+        await message.reply_text(f"{_['C_B_H_15']} (Stopped {count} active instances)")
+    except Exception as e:
+        await message.reply_text("An error occurred while deleting all cloned bots.")
+        logging.exception(e)
+
+
+@app.on_message(filters.command(["mybot", "mybots"], prefixes=["/", "."]))
+@language
+async def my_cloned_bots(client, message, _):
+    try:
+        user_id = message.from_user.id
+        
+        cloned_bots = []
+        async for bot in clonebotdb.find({"user_id": user_id}):
+            cloned_bots.append(bot)
+        
+        if not cloned_bots:
+            await message.reply_text(_["C_B_H_16"] + FOOTER)
+            return
+        
+        total_clones = len(cloned_bots)
+        text = f"**ʏᴏᴜʀ ᴄʟᴏɴᴇᴅ ʙᴏᴛs : {total_clones}**\n\n"
+        
+        for bot in cloned_bots:
+            text += f"**ʙᴏᴛ ɴᴀᴍᴇ:** {bot['name']}\n"
+            text += f"**ʙᴏᴛ ᴜsᴇʀɴᴀᴍᴇ:** @{bot['username']}\n\n"
+        
+        await message.reply_text(text + FOOTER)
+    except Exception as e:
+        logging.exception(e)
+        await message.reply_text("An error occurred while fetching your cloned bots.")
+
+
+@app.on_message(filters.command("cloned") & SUDOERS)
+@language
+async def list_cloned_bots(client, message, _):
+    try:
+        cloned_bots = []
+        async for bot in clonebotdb.find():
+            cloned_bots.append(bot)
+
+        if not cloned_bots:
+            await message.reply_text(_["C_B_H_13"])
+            return
+
+        total_clones = len(cloned_bots)
+        text = f"**ᴛᴏᴛᴀʟ ᴄʟᴏɴᴇᴅ ʙᴏᴛs: `{total_clones}`**\n\n"
+
+        chunk_size = 10
+        chunks = [cloned_bots[i:i + chunk_size] for i in range(0, len(cloned_bots), chunk_size)]
+
+        for chunk in chunks:
+            chunk_text = text
+            for bot in chunk:
+                user_id = bot.get("user_id")
+                bot_id = bot.get("bot_id", "Unknown")
+                name = bot.get("name", "Unknown")
+                username = bot.get("username", "Unknown")
+                session = bot.get("session_string") 
+
+                if session:
+                    assistant_status = "✅ Connected"
+                else:
+                    assistant_status = "❌ None"
+                
+                created_on = bot.get("Date", "Unknown")
+                if created_on is False:
+                    created_on = "Unknown"
+
+                if not user_id:
+                    owner_name = "Data Missing"
+                    owner_profile_link = "#"
+                else:
+                    try:
+                        owner = await client.get_users(user_id)
+                        owner_name = owner.first_name
+                        owner_profile_link = f"tg://user?id={user_id}"
+                    except pyrogram.errors.PeerIdInvalid:
+                        owner_name = "Deleted User"
+                        owner_profile_link = "#"
+                    except Exception as e:
+                        owner_name = "Unknown User"
+                        owner_profile_link = "#"
+
+                chunk_text += f"**ʙᴏᴛ ɪᴅ :** `{bot_id}`\n"
+                chunk_text += f"**ʙᴏᴛ ɴᴀᴍᴇ :** {name}\n"
+                chunk_text += f"**ʙᴏᴛ ᴜsᴇʀɴᴀᴍᴇ :** @{username}\n"
+                chunk_text += f"**ᴏᴡɴᴇʀ :** [{owner_name}]({owner_profile_link})\n"
+                chunk_text += f"**ᴀssɪsᴛᴀɴᴛ :** {assistant_status}\n"
+                chunk_text += f"**ᴄʀᴇᴀᴛᴇᴅ ᴏɴ :** {created_on}\n\n"
+
+            await message.reply_text(chunk_text)
+
+    except Exception as e:
+        logging.exception(e)
+        await message.reply_text("An error occurred while listing cloned bots.")
+
+
+@app.on_message(filters.command("totalbots") & SUDOERS)
+@language
+async def list_cloned_bots_total(client, message, _):
+    try:
+        cloned_bots = []
+        async for bot in clonebotdb.find():
+            cloned_bots.append(bot)
+
+        if not cloned_bots:
+            await message.reply_text("No bots have been cloned yet.")
+            return
+
+        total_clones = len(cloned_bots)
+        text = f"**ᴛᴏᴛᴀʟ ᴄʟᴏɴᴇᴅ ʙᴏᴛs : `{total_clones}`**\n\n"          
+
+        await message.reply_text(text)
+    except Exception as e:
+        logging.exception(e)
+        await message.reply_text("An error occurred while listing cloned bots.")
+
+
+@app.on_message(filters.command(["cinfo"]) & SUDOERS)
+@language
+async def clone_bot_info(client, message, _):
+    if len(message.command) < 2:
+        return await message.reply_text(
+            "**⚠️ ᴘʟᴇᴀsᴇ ᴘʀᴏᴠɪᴅᴇ ᴛʜᴇ ᴄʟᴏɴᴇ ʙᴏᴛ's ᴜsᴇʀɴᴀᴍᴇ, ɪᴅ ᴏʀ ᴛᴏᴋᴇɴ.**\n"
+            "**ᴇxᴀᴍᴘʟᴇ:** `/cinfo @MyCloneBot`"
+        )
+
+    query_value = message.command[1]
+    if query_value.startswith("@"):
+        query_value = query_value[1:]
+        
+    msg = await message.reply_text("🔄 **ғᴇᴛᴄʜɪɴɢ ᴄʟᴏɴᴇ ʙᴏᴛ ᴅᴇᴛᴀɪʟs...**")
+
+    try:
+        search_query = {
+            "$or": [
+                {"username": re.compile(f"^{query_value}$", re.IGNORECASE)},
+                {"token": query_value}
+            ]
+        }
+        if query_value.isdigit():
+            search_query["$or"].append({"bot_id": int(query_value)})
+
+        cloned_bot = await clonebotdb.find_one(search_query)
+
+        if not cloned_bot:
+            return await msg.edit_text(f"**❌ ɴᴏ ᴄʟᴏɴᴇ ʙᴏᴛ ғᴏᴜɴᴅ ᴡɪᴛʜ:** `{query_value}`")
+
+        bot_name = cloned_bot.get("name", "Unknown")
+        bot_token = cloned_bot.get("token", "Unknown")
+        bot_id = cloned_bot.get("bot_id", "Unknown")
+        bot_username = cloned_bot.get("username", query_value)
+        created_on = cloned_bot.get("Date", "Unknown")
+        
+        last_activity = cloned_bot.get("last_activity", "Unknown")
+        if isinstance(last_activity, datetime):
+            last_activity = last_activity.strftime("%d-%m-%Y %H:%M:%S")
+        
+        session = cloned_bot.get("session_string")
+        assistant_status = "✅ Added" if session else "❌ Not Added"
+
+        owner_id = cloned_bot.get("user_id")
+        if owner_id:
+            try:
+                owner_obj = await client.get_users(int(owner_id))
+                owner_name = owner_obj.first_name
+                owner_mention = owner_obj.mention
+            except pyrogram.errors.PeerIdInvalid:
+                owner_name = "Deleted/Unknown User"
+                owner_mention = f"[{owner_id}](tg://user?id={owner_id})"
+            except Exception:
+                owner_name = "Unknown"
+                owner_mention = f"[{owner_id}](tg://user?id={owner_id})"
+        else:
+            owner_name = "Data Missing"
+            owner_mention = "N/A"
+
+        text = (
+            f"**🤖 ᴄʟᴏɴᴇ ʙᴏᴛ ɪɴғᴏʀᴍᴀᴛɪᴏɴ**\n\n"
+            f"**👤 ʙᴏᴛ ɴᴀᴍᴇ:** {bot_name}\n"
+            f"**🆔 ʙᴏᴛ ɪᴅ:** `{bot_id}`\n"
+            f"**🔗 ᴜsᴇʀɴᴀᴍᴇ:** @{bot_username}\n"
+            f"**🔑 ᴛᴏᴋᴇɴ:** `{bot_token}`\n"
+            f"**📅 ᴄʀᴇᴀᴛᴇᴅ ᴏɴ:** {created_on}\n"
+            f"**⏱️ ʟᴀsᴛ ᴀᴄᴛɪᴠɪᴛʏ:** {last_activity}\n"
+            f"**🎧 ᴀssɪsᴛᴀɴᴛ:** {assistant_status}\n\n"
+            f"**👑 ᴏᴡɴᴇʀ ɴᴀᴍᴇ:** {owner_name}\n"
+            f"**🔗 ᴏᴡɴᴇʀ ʟɪɴᴋ:** {owner_mention}"
+        )
+
+        await msg.edit_text(text)
+
+    except Exception as e:
+        await msg.edit_text(f"**❌ ᴇʀʀᴏʀ ғᴇᴛᴄʜɪɴɢ ᴅᴇᴛᴀɪʟs:** `{str(e)}`")
+        logging.exception(f"Error in /cinfo command: {e}")
+
+
+@app.on_message(filters.command("active") & SUDOERS)
+async def list_active_bots(client, message):
+    try:
+        days = int(message.command[1]) if len(message.command) > 1 else 30
+        limit_date = datetime.now() - timedelta(days=days)
+
+        text = f"**🟢 Active Bots (Used in last {days} days):**\n\n"
+        count = 0
+        
+        async for bot in clonebotdb.find({"last_activity": {"$gte": limit_date}}):
+            last_active = bot.get("last_activity")
+            if last_active:
+                last_active = last_active.strftime("%d-%m-%Y")
+            else:
+                last_active = "Just Created"
+            
+            text += f"**Bot:** @{bot['username']}\n**Last Active:** {last_active}\n\n"
+            count += 1
+            
+        if count == 0:
+            await message.reply_text(f"**❌ No active bots found in last {days} days.**")
+        else:
+            if len(text) > 4000:
+                with open("active_bots.txt", "w", encoding="utf-8") as f:
+                    f.write(text.replace("*", ""))
+                await message.reply_document("active_bots.txt", caption=f"Total Active: {count}")
+                import os
+                os.remove("active_bots.txt")
+            else:
+                await message.reply_text(text)
+
+    except Exception as e:
+        await message.reply_text(f"Error: {e}")
+
+
+@app.on_message(filters.command("botstats") & SUDOERS)
+async def bot_statistics(client, message):
+    try:
+        msg = await message.reply_text("🔄 **Calculating Stats...**")
+        
+        limit_date = datetime.now() - timedelta(days=30)
+        
+        total = await clonebotdb.count_documents({})
+        active = await clonebotdb.count_documents({"last_activity": {"$gte": limit_date}})
+        inactive = await clonebotdb.count_documents({
+            "$or": [
+                {"last_activity": {"$lt": limit_date}},
+                {"last_activity": {"$exists": False}}
+            ]
+        })
+        
+        text = (
+            f"**📊 CLONE BOT STATISTICS**\n\n"
+            f"**🤖 Total Bots:** `{total}`\n"
+            f"**🟢 Active (Last 30 Days):** `{active}`\n"
+            f"**🔴 Inactive (Dead):** `{inactive}`\n"
+        )
+        await msg.edit_text(text)
+    except Exception as e:
+        await message.reply_text(f"Error: {e}")
+
+
+@app.on_message(filters.command("inactive") & SUDOERS)
+async def list_inactive_bots(client, message):
+    try:
+        days = int(message.command[1]) if len(message.command) > 1 else 30
+        limit_date = datetime.now() - timedelta(days=days)
+
+        text = f"**⚠️ Inactive Bots (Not used in {days} days):**\n\n"
+        count = 0
+        
+        async for bot in clonebotdb.find({
+            "$or": [
+                {"last_activity": {"$lt": limit_date}},
+                {"last_activity": {"$exists": False}}
+            ]
+        }):
+            last_active = bot.get("last_activity", "Never/Unknown")
+            if last_active != "Never/Unknown":
+                last_active = last_active.strftime("%d-%m-%Y")
+            
+            text += f"**Bot:** @{bot['username']}\n**Last Active:** {last_active}\n\n"
+            count += 1
+            
+        if count == 0:
+            await message.reply_text(f"**✅ No inactive bots found older than {days} days.**")
+        else:
+            if len(text) > 4000:
+                with open("inactive_bots.txt", "w", encoding="utf-8") as f:
+                    f.write(text.replace("*", ""))
+                await message.reply_document("inactive_bots.txt", caption=f"Total Inactive: {count}")
+                import os
+                os.remove("inactive_bots.txt")
+            else:
+                await message.reply_text(text)
+
+    except Exception as e:
+        await message.reply_text(f"Error: {e}")
+
+
+@app.on_message(filters.command("delinactive") & SUDOERS)
+async def delete_inactive_bots(client, message):
+    try:
+        days = int(message.command[1]) if len(message.command) > 1 else 30
+        limit_date = datetime.now() - timedelta(days=days)
+        
+        to_delete = await clonebotdb.count_documents({
+            "$or": [
+                {"last_activity": {"$lt": limit_date}},
+                {"last_activity": {"$exists": False}}
+            ]
+        })
+        
+        if to_delete == 0:
+            return await message.reply_text("No inactive bots to delete.")
+            
+        await message.reply_text(f"Deleting {to_delete} bots inactive for {days} days...")
+        
+        bots_to_delete = clonebotdb.find({
+            "$or": [
+                {"last_activity": {"$lt": limit_date}},
+                {"last_activity": {"$exists": False}}
+            ]
+        })
+        async for bot in bots_to_delete:
+            bot_id = bot.get("bot_id")
+            if bot_id in ACTIVE_CLONES:
+                try:
+                    await ACTIVE_CLONES[bot_id].stop()
+                    del ACTIVE_CLONES[bot_id]
+                except:
+                    pass
+
+        await clonebotdb.delete_many({
+            "$or": [
+                {"last_activity": {"$lt": limit_date}},
+                {"last_activity": {"$exists": False}}
+            ]
+        })
+        
+        await message.reply_text(f"**✅ Successfully deleted {to_delete} inactive bots!**\n\nNote: Please restart the bot to clear memory cache.")
+        
+    except Exception as e:
+        await message.reply_text(f"Error: {e}")
+
+
 @app.on_message(filters.command(["bots", "botlist"]))
 async def bots_system_status(client, message):
     bot_list_text = """✨ **OUR BOTS SYSTEM STATUS** ✨
