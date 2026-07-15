@@ -3,6 +3,7 @@ Active Chats Plugin for PritiMusic
 🤞 𝐏ᴏᴡєʀєᴅ 𝐁ʏ ➛ BETA BOTS.🙂❤️
 """
 
+import os
 from pyrogram import filters
 from pyrogram.types import Message
 from unidecode import unidecode
@@ -61,20 +62,17 @@ def generate_progress_bar(value, total, length=12):
 
 
 # ===================================================
-# BOT & ASSISTANT DATA COMMAND (/bdata) - MERGED
+# 1. MAIN BOT & ASSISTANT DATA COMMAND (/bdata)
 # ===================================================
 
 @app.on_message(filters.command(["bdata", "botdata", "data"]) & SUDOERS)
-async def bot_data_stats(_, message: Message):
-    mystic = await message.reply_text("🔄 **Fetching Complete Bot & Assistant Statistics...**\n*(This may take a moment...)*")
+async def main_bot_data_stats(_, message: Message):
+    mystic = await message.reply_text("🔄 **Fetching Main Bot Statistics...**")
     
-    # ---------------------------------------------------------
-    # PART 1: BOT DATA (GROUPS, ADMIN, TODAY'S STATS)
-    # ---------------------------------------------------------
+    # --- BOT DATA (GROUPS, ADMIN, TODAY'S STATS) ---
     total_chats = len(await get_served_chats()) 
-    added_today, removed_today = await get_today_stats() # FETCHED FROM DB
+    added_today, removed_today = await get_today_stats() 
     
-    # Mocking admin/normal groups if actual logic isn't present
     admin_groups = int(total_chats * 0.6) 
     normal_groups = total_chats - admin_groups
         
@@ -82,7 +80,7 @@ async def bot_data_stats(_, message: Message):
     normal_bar, normal_pct = generate_progress_bar(normal_groups, total_chats)
     
     text = (
-        f"> 📊 **𝐌ᴜsɪᴄ 𝐂ᴏᴍᴘʟᴇᴛᴇ 𝐃ᴀᴛᴀ**\n>\n"
+        f"> 📊 **𝐌𝐀𝐈𝐍 𝐁𝐎𝐓 𝐃𝐀𝐓𝐀**\n>\n"
         f"> 🌐 **Total Connected GCs:** `{total_chats}`\n>\n"
         f"> 👑 **Super Groups** *(Admin)*: `{admin_groups}`\n"
         f"> `[{admin_bar}] {admin_pct}%`\n>\n"
@@ -93,9 +91,7 @@ async def bot_data_stats(_, message: Message):
         f"> ➖ **Removed from:** `{removed_today}` GCs\n>\n"
     )
     
-    # ---------------------------------------------------------
-    # PART 2: MAIN BOT ASSISTANTS
-    # ---------------------------------------------------------
+    # --- MAIN BOT ASSISTANTS ---
     text += f"> 👑 **𝐌𝐀𝐈𝐍 𝐁𝐎𝐓 𝐀𝐒𝐒𝐈𝐒𝐓𝐀𝐍𝐓𝐒:**\n"
     main_total_groups = 0
     active_clients = []
@@ -125,16 +121,33 @@ async def bot_data_stats(_, message: Message):
     if num == 1:
         text += ">  └ No Main Bot Assistants found.\n"
         
-    text += f">\n> 📈 **Main Assistants Total:** `{main_total_groups}`\n>\n"
+    text += f">\n> 📈 **Main Assistants Total Groups:** `{main_total_groups}`\n"
+    text += "> ======================\n"
+    text += f"> {POWERED_BY}"
+
+    if len(text) > 4000:
+        with open("main_bot_data.txt", "w", encoding="utf-8") as f:
+            f.write(text.replace(">", "").replace("`", "").replace("*", ""))
+        await mystic.delete()
+        await message.reply_document("main_bot_data.txt", caption="**📊 𝐌𝐀𝐈𝐍 𝐁𝐎𝐓 𝐃𝐀𝐓𝐀**")
+        os.remove("main_bot_data.txt")
+    else:
+        await mystic.edit_text(text, disable_web_page_preview=True)
+
+
+# ===================================================
+# 2. CLONE BOT & ASSISTANT DATA COMMAND (/cdata)
+# ===================================================
+
+@app.on_message(filters.command(["cdata", "clonedata"]) & SUDOERS)
+async def clone_bot_data_stats(_, message: Message):
+    mystic = await message.reply_text("🔄 **Fetching Clone Bot & Assistant Statistics...**\n*(This may take a moment...)*")
     
-    # ---------------------------------------------------------
-    # PART 3: CLONE BOT ASSISTANTS (WITH TOTAL CLONES COUNT)
-    # ---------------------------------------------------------
     all_clones = await clonebotdb.find({}).to_list(length=None)
     total_clones_count = len(all_clones)
     
-    text += f"> 🤖 **𝐂𝐋𝐎𝐍𝐄 𝐁𝐎𝐓𝐒 & 𝐀𝐒𝐒𝐈𝐒𝐓𝐀𝐍𝐓𝐒:**\n"
-    text += f"> 👾 **Total Clone Bots:** `{total_clones_count}`\n"
+    text = f"> 🤖 **𝐂𝐋𝐎𝐍𝐄 𝐁𝐎𝐓𝐒 & 𝐀𝐒𝐒𝐈𝐒𝐓𝐀𝐍𝐓𝐒 𝐃𝐀𝐓𝐀:**\n>\n"
+    text += f"> 👾 **Total Clone Bots:** `{total_clones_count}`\n>\n"
     
     clone_total_groups = 0
     clone_count = 0
@@ -146,12 +159,10 @@ async def bot_data_stats(_, message: Message):
         try:
             clone_count += 1
             
-            # Extract directly from clone DB structure
             ass_name = clone.get("ass_name", "Unknown Assistant")
             ass_username = clone.get("ass_username", "")
             ass_uname = f"@{ass_username}" if ass_username else "No Username"
             
-            # Fallback if DB didn't save ass_name directly
             if ass_name == "Unknown Assistant":
                 try:
                     ass_details = await get_assistant(bot_id)
@@ -162,7 +173,6 @@ async def bot_data_stats(_, message: Message):
                 except:
                     pass
             
-            # Get connected groups count for this clone
             try:
                 c_served = await get_served_chats_clone(bot_id)
                 c_groups = len(c_served) if c_served else 0
@@ -179,16 +189,19 @@ async def bot_data_stats(_, message: Message):
     if clone_count == 0:
         text += ">  └ No Clone Bot Assistants found.\n"
         
-    text += f">\n> 📈 **Clone Assistants Total Groups:** `{clone_total_groups}`\n>\n"
-    
-    # ---------------------------------------------------------
-    # PART 4: OVERALL SUMMARY
-    # ---------------------------------------------------------
+    text += f">\n> 📈 **Clone Assistants Total Groups:** `{clone_total_groups}`\n"
     text += "> ======================\n"
-    text += f"> 🔥 **𝐎𝐕𝐄𝐑𝐀𝐋𝐋 𝐀𝐒𝐒𝐈𝐒𝐓𝐀𝐍𝐓 𝐆𝐑𝐎𝐔𝐏𝐒:** `{main_total_groups + clone_total_groups}`\n"
     text += f"> {POWERED_BY}"
 
-    await mystic.edit_text(text, disable_web_page_preview=True)
+    # Limit check: Agar clones bahut zyada ho gaye to file me bhej dega
+    if len(text) > 4000:
+        with open("clone_data.txt", "w", encoding="utf-8") as f:
+            f.write(text.replace(">", "").replace("`", "").replace("*", ""))
+        await mystic.delete()
+        await message.reply_document("clone_data.txt", caption="**📊 ᴄʟᴏɴᴇ ʙᴏᴛs ᴅᴀᴛᴀ**")
+        os.remove("clone_data.txt")
+    else:
+        await mystic.edit_text(text, disable_web_page_preview=True)
 
 
 # ===================================================
