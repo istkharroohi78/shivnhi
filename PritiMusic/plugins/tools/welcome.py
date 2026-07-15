@@ -1,7 +1,7 @@
 import os
 import re
 import random
-import asyncio  
+import asyncio
 from logging import getLogger
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 from pyrogram import Client, filters, enums
@@ -17,7 +17,7 @@ LOGGER = getLogger(__name__)
 welcome_state = {}  
 last_welcome_msg = {}  
 custom_welcomes = {}  
-weltime_state = {}    
+weltime_state = {}   
 
 
 # 🔥 1. BUTTON PARSER (Text se button aur color nikalne ka system)
@@ -206,6 +206,22 @@ async def set_custom_welcome(client, message):
 
     custom_welcomes[message.chat.id] = {"type": msg_type, "file_id": file_id, "text": clean_text, "markup": markup}
     await message.reply("**✅ ᴄᴜsᴛᴏᴍ ᴡᴇʟᴄᴏᴍᴇ ᴡɪᴛʜ ʙᴜᴛᴛᴏɴs sᴇᴛ sᴜᴄᴄᴇssғᴜʟʟʏ!**")
+
+
+@app.on_message(filters.command("cwelcome") & filters.group)
+async def clear_custom_welcome(client, message):
+    user = await client.get_chat_member(message.chat.id, message.from_user.id)
+    if user.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
+        return await message.reply("**sᴏʀʀʏ ᴏɴʟʏ ᴀᴅᴍɪɴs ᴄᴀɴ ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ!**")
+
+    chat_id = message.chat.id
+    
+    # Check agar group mein koi custom welcome set hai
+    if chat_id in custom_welcomes:
+        del custom_welcomes[chat_id]
+        await message.reply("**✅ ᴄᴜsᴛᴏᴍ ᴡᴇʟᴄᴏᴍᴇ ᴄʟᴇᴀʀᴇᴅ!\n\nɴᴏᴡ ᴅᴇғᴀᴜʟᴛ ɪᴍᴀɢᴇ ᴡᴇʟᴄᴏᴍᴇ ᴡɪʟʟ ʙᴇ ᴜsᴇᴅ.**")
+    else:
+        await message.reply("**⚠️ ɴᴏ ᴄᴜsᴛᴏᴍ ᴡᴇʟᴄᴏᴍᴇ ɪs sᴇᴛ ғᴏʀ ᴛʜɪs ɢʀᴏᴜᴘ.**")
 
 
 @app.on_message(filters.command("weltime") & filters.group)
