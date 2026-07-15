@@ -27,9 +27,9 @@ YT_API_KEY = os.getenv("YT_API_KEY" , "xbit_kp3GFnAvdnFVDV3L6xACy-jbVBE5q5Cd")
 WORKER_FALLBACK_API_URL = os.getenv("WORKER_FALLBACK_API_URL", "https://youtubenewapi.skybotsdeveloper.workers.dev")
 WORKER_FALLBACK_API_KEY = os.getenv("WORKER_FALLBACK_API_KEY", "itsmesid")
 
-# --- API 4: Inflex ---
-API_URL = os.getenv("API_URL", "https://bot.apixhub.fun")
-API_KEY = os.getenv("API_KEY", "OijUY78533DPoPnOkwIK7qImQk")
+# --- API 4: Inflex (Fixed variable names to avoid overriding API 1) ---
+INFLEX_API_URL = os.getenv("INFLEX_API_URL", "https://bot.apixhub.fun")
+INFLEX_API_KEY = os.getenv("INFLEX_API_KEY", "OijUY78533DPoPnOkwIK7qImQk")
 
 def time_to_seconds(time_str):
     stringt = str(time_str)
@@ -54,53 +54,51 @@ async def _async_run(func, *args, **kwargs):
         loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
 
+
 # ----------------- DOWNLOADERS -----------------
 
 async def single_api_download(api_name: str, req_url: str, params: dict, final_path: str) -> str:
-    """Downloads from a single API with strict checks for corrupted/fake files."""
+    """Downloads from a single API. Returns final_path on success, None on error."""
     temp_path = f"{final_path}_{api_name.replace(' ', '')}.tmp"
-    strict_timeout = aiohttp.ClientTimeout(total=120, connect=3, sock_read=7)
     
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(req_url, params=params, timeout=strict_timeout) as resp:
+            async with session.get(req_url, params=params) as resp:
                 if resp.status == 200:
                     
-                    # 🟢 FIX: Check Content-Type (Reject JSON/HTML Error pages)
+                    # Check Content-Type (Reject JSON/HTML Error pages)
                     content_type = resp.headers.get("Content-Type", "").lower()
                     if "json" in content_type or "text" in content_type:
-                        LOGGER.debug(f"❌ {api_name} sent fake/error response (Content-Type: {content_type}). Rejecting.")
+                        LOGGER.warning(f"❌ {api_name} sent fake/error response. Shifting to next...")
                         return None
 
                     with open(temp_path, "wb") as f:
                         async for chunk in resp.content.iter_chunked(131072):
                             f.write(chunk)
                     
-                    # 🟢 FIX: Strict File Size Check (File must be > 100 KB to be a valid audio/video)
+                    # Strict File Size Check 
                     if os.path.exists(temp_path):
                         file_size = os.path.getsize(temp_path)
                         if file_size > 102400:  # 100 KB minimum size
-                            if not os.path.exists(final_path):  # Check if another API already won
+                            if not os.path.exists(final_path): 
                                 os.rename(temp_path, final_path)
-                                LOGGER.info(f"⚡ FASTEST API WON: {api_name} downloaded {file_size} bytes successfully!")
+                                LOGGER.info(f"✅ Success: {api_name} downloaded the file!")
                                 return final_path
                         else:
-                            LOGGER.debug(f"❌ {api_name} downloaded a corrupted/tiny file ({file_size} bytes). Ignored.")
+                            LOGGER.warning(f"❌ {api_name} downloaded a corrupted/tiny file. Shifting to next...")
                             
-    except (asyncio.TimeoutError, aiohttp.ClientError):
-        LOGGER.warning(f"⏳ {api_name} atak gaya (Timeout/Error)! Instantly shifting to others...")
     except Exception as e:
-        LOGGER.debug(f"❌ {api_name} failed: {e}")
+        LOGGER.error(f"❌ {api_name} failed with error: {e}. Shifting to next...")
     finally:
-        # Hamesha garbage clear karo
+        # Garbage clear
         if os.path.exists(temp_path):
             try: os.remove(temp_path)
             except: pass
             
     return None
 
-
-async def race_all_apis(video_id: str, download_type: str, title: str) -> str:
+async def sequential_api_download(video_id: str, download_type: str, title: str) -> str:
+    """एक-एक करके API ट्राई करेगा, एरर आने पर ही अगले API पर शिफ्ट होगा।"""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     filename = get_safe_filename(title, video_id)
     ext = "mp4" if download_type == "video" else "mp3"
@@ -110,28 +108,30 @@ async def race_all_apis(video_id: str, download_type: str, title: str) -> str:
         return file_path
 
     type_param = "audio" if download_type == "audio" else "video"
-    tasks = []
 
+    # API List (Order के हिसाब से)
+    apis_to_try = []
     if API_URL and API_KEY:
-        tasks.append(asyncio.create_task(single_api_download("ShrutiAPI", f"{API_URL}/download", {"url": video_id, "type": type_param, "api_key": API_KEY}, file_path)))
+        apis_to_try.append(("ShrutiAPI", f"{API_URL}/download", {"url": video_id, "type": type_param, "api_key": API_KEY}))
     if YTPROXY_URL and YT_API_KEY:
-        tasks.append(asyncio.create_task(single_api_download("XbitAPI", f"{YTPROXY_URL}/download", {"url": video_id, "type": type_param, "api_key": YT_API_KEY}, file_path)))
+        apis_to_try.append(("XbitAPI", f"{YTPROXY_URL}/download", {"url": video_id, "type": type_param, "api_key": YT_API_KEY}))
     if WORKER_FALLBACK_API_URL and WORKER_FALLBACK_API_KEY:
-        tasks.append(asyncio.create_task(single_api_download("WorkerAPI", f"{WORKER_FALLBACK_API_URL}/download", {"url": video_id, "type": type_param, "api_key": WORKER_FALLBACK_API_KEY}, file_path)))
+        apis_to_try.append(("WorkerAPI", f"{WORKER_FALLBACK_API_URL}/download", {"url": video_id, "type": type_param, "api_key": WORKER_FALLBACK_API_KEY}))
     if INFLEX_API_URL and INFLEX_API_KEY:
-        tasks.append(asyncio.create_task(single_api_download("InflexAPI", f"{INFLEX_API_URL}/download", {"url": video_id, "type": type_param, "api_key": INFLEX_API_KEY}, file_path)))
+        apis_to_try.append(("InflexAPI", f"{INFLEX_API_URL}/download", {"url": video_id, "type": type_param, "api_key": INFLEX_API_KEY}))
 
-    if not tasks: return None
-
-    for completed_task in asyncio.as_completed(tasks):
-        result = await completed_task
+    for api_name, req_url, params in apis_to_try:
+        LOGGER.info(f"🔄 Trying API: {api_name}...")
+        result = await single_api_download(api_name, req_url, params, file_path)
         if result:
-            for t in tasks:
-                if not t.done(): t.cancel()
-            return result
-    return None
+            return result  # अगर फाइल मिल गई तो लूप ब्रेक और रिटर्न
+            
+    return None  # अगर सारे API फेल हो गए
+
 
 async def ytdl_fallback_download(link: str, download_type: str, title: str = None) -> str:
+    """यह सबसे लास्ट में चलेगा और Cookies का इस्तेमाल करेगा।"""
+    LOGGER.info("🔄 All APIs failed. Falling back to yt-dlp (Cookies)...")
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     video_id = extract_video_id(link)
     filename = get_safe_filename(title, video_id)
@@ -147,28 +147,28 @@ async def ytdl_fallback_download(link: str, download_type: str, title: str = Non
         'outtmpl': file_path,
         'quiet': True,
         'no_warnings': True,
-        'cookiefile': 'cookies.txt',
+        'cookiefile': 'cookies.txt',  
         'extractor_args': {'youtube': ['player_client=ios,tv_embedded']}, 
         'geo_bypass': True,
         'nocheckcertificate': True,
         'noplaylist': True,
-        'socket_timeout': 30, # 🟢 FIX: Prevents yt-dlp from blocking the entire bot if network drops
     }
     
     if download_type == "audio":
         ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
 
     try:
-        # 🟢 FIX: Wrapped in wait_for so it doesn't run forever
-        await asyncio.wait_for(_async_run(yt_dlp.YoutubeDL(ydl_opts).download, [link]), timeout=300)
+        await _async_run(yt_dlp.YoutubeDL(ydl_opts).download, [link])
         if os.path.exists(file_path) and os.path.getsize(file_path) > 102400:
+            LOGGER.info("✅ Success: Downloaded using yt-dlp fallback!")
             return file_path
     except Exception as e:
-        LOGGER.error(f"yt-dlp fallback error: {str(e)}")
+        LOGGER.error(f"❌ yt-dlp fallback error: {str(e)}")
     return None
 
 async def spotify_fallback_download(title: str) -> str:
     if not title: return None
+    LOGGER.info("🔄 yt-dlp failed. Falling back to Spotify...")
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     clean_title = re.sub(r'\(.*?\)|\[.*?\]|official|video|audio|lyric', '', title, flags=re.IGNORECASE).strip()
     filename = get_safe_filename(clean_title, f"sp_{int(time.time())}")
@@ -188,12 +188,15 @@ async def spotify_fallback_download(title: str) -> str:
                                         async for chunk in song_resp.content.iter_chunked(131072):
                                             f.write(chunk)
                                     if os.path.exists(file_path) and os.path.getsize(file_path) > 102400:
+                                        LOGGER.info("✅ Success: Downloaded using Spotify fallback!")
                                         return file_path
-    except Exception as e: pass
+    except Exception as e: 
+        LOGGER.error(f"❌ Spotify fallback failed: {e}")
     return None
 
 async def jiosaavn_fallback_download(title: str) -> str:
     if not title: return None
+    LOGGER.info("🔄 Spotify failed. Falling back to JioSaavn...")
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     clean_title = re.sub(r'\(.*?\)|\[.*?\]|official|video|audio|lyric', '', title, flags=re.IGNORECASE).strip()
     filename = get_safe_filename(clean_title, f"js_{int(time.time())}")
@@ -215,12 +218,15 @@ async def jiosaavn_fallback_download(title: str) -> str:
                                         async for chunk in song_resp.content.iter_chunked(131072):
                                             f.write(chunk)
                                     if os.path.exists(file_path) and os.path.getsize(file_path) > 102400:
+                                        LOGGER.info("✅ Success: Downloaded using JioSaavn fallback!")
                                         return file_path
-    except Exception: pass
+    except Exception as e:
+        LOGGER.error(f"❌ JioSaavn fallback failed: {e}")
     return None
 
 async def soundcloud_fallback_download(title: str) -> str:
     if not title: return None
+    LOGGER.info("🔄 JioSaavn failed. Falling back to SoundCloud...")
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     clean_title = re.sub(r'\(.*?\)|\[.*?\]|official|video|audio|lyric', '', title, flags=re.IGNORECASE).strip()
     filename = get_safe_filename(clean_title, f"sc_{int(time.time())}")
@@ -233,8 +239,11 @@ async def soundcloud_fallback_download(title: str) -> str:
     }
     try:
         await asyncio.wait_for(_async_run(yt_dlp.YoutubeDL(ydl_opts).download, [f"scsearch1:{clean_title}"]), timeout=120)
-        if os.path.exists(file_path) and os.path.getsize(file_path) > 102400: return file_path
-    except Exception: pass
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 102400: 
+            LOGGER.info("✅ Success: Downloaded using SoundCloud fallback!")
+            return file_path
+    except Exception as e:
+        LOGGER.error(f"❌ SoundCloud fallback failed: {e}")
     return None
 
 async def download_song(link: str, title: str = None) -> str:
@@ -248,12 +257,15 @@ async def download_song(link: str, title: str = None) -> str:
             if res and res.get("result"): title = res["result"][0]["title"]
         except Exception: pass
 
-    api_result = await race_all_apis(video_id, "audio", title)
+    # 1. API Sequential Trying
+    api_result = await sequential_api_download(video_id, "audio", title)
     if api_result: return api_result
 
+    # 2. yt-dlp Fallback
     yt_result = await ytdl_fallback_download(link, "audio", title)
     if yt_result: return yt_result
     
+    # 3. Spotify/Jiosaavn/SoundCloud Fallback
     if title:
         sp_result = await spotify_fallback_download(title)
         if sp_result: return sp_result
@@ -277,7 +289,7 @@ async def download_video(link: str, title: str = None) -> str:
             if res and res.get("result"): title = res["result"][0]["title"]
         except Exception: pass
 
-    api_result = await race_all_apis(video_id, "video", title)
+    api_result = await sequential_api_download(video_id, "video", title)
     if api_result: return api_result
 
     yt_result = await ytdl_fallback_download(link, "video", title)
