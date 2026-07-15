@@ -66,26 +66,22 @@ async def single_api_download(api_name: str, req_url: str, params: dict, final_p
             async with session.get(req_url, params=params) as resp:
                 if resp.status == 200:
                     
-                    # Check Content-Type (Reject JSON/HTML Error pages)
-                    content_type = resp.headers.get("Content-Type", "").lower()
-                    if "json" in content_type or "text" in content_type:
-                        LOGGER.warning(f"❌ {api_name} sent fake/error response. Shifting to next...")
-                        return None
-
+                    # 🟢 FIX: Content-Type वाली चेकिंग हटा दी गई है ताकि अगर API गलती से Text/JSON header भेजे तो भी वो डाउनलोड ट्राई करे।
+                    
                     with open(temp_path, "wb") as f:
                         async for chunk in resp.content.iter_chunked(131072):
                             f.write(chunk)
                     
-                    # Strict File Size Check 
+                    # 🟢 Strict File Size Check: असली गाना/वीडियो 100KB से ऊपर ही होगा।
                     if os.path.exists(temp_path):
                         file_size = os.path.getsize(temp_path)
                         if file_size > 102400:  # 100 KB minimum size
                             if not os.path.exists(final_path): 
                                 os.rename(temp_path, final_path)
-                                LOGGER.info(f"✅ Success: {api_name} downloaded the file!")
+                                LOGGER.info(f"✅ Success: {api_name} downloaded the file successfully!")
                                 return final_path
                         else:
-                            LOGGER.warning(f"❌ {api_name} downloaded a corrupted/tiny file. Shifting to next...")
+                            LOGGER.warning(f"❌ {api_name} gave an error or invalid file (Size: {file_size} bytes). Shifting to next...")
                             
     except Exception as e:
         LOGGER.error(f"❌ {api_name} failed with error: {e}. Shifting to next...")
