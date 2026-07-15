@@ -13,8 +13,8 @@ import httpx
 import yt_dlp
 
 # Use environment variables for configuration
-API_URL = os.getenv("API_URL", "http://localhost:8000").rstrip("/")
-API_KEY = os.getenv("API_KEY", "riteshfree7")
+API_URL = os.getenv("API_URL", "https://api.onegrab.fun").rstrip("/")
+API_KEY = os.getenv("API_KEY", "fbee25_x8FqJTStnOF5Ry5vGzMXTbR8zmuJ0H29")
 
 # --- Dynamic Compatibility / Fallbacks for Environment Safety ---
 try:
