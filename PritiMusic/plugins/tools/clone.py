@@ -1,6 +1,7 @@
 import re
 import logging
 import asyncio
+import importlib
 import random
 from sys import argv
 from datetime import datetime, timedelta
@@ -29,6 +30,7 @@ import config
 
 # --- LOCAL IMPORTS ---
 from PritiMusic import app
+from PritiMusic.core.mongo import mongodb
 from PritiMusic.utils.database import get_assistant, clonebotdb
 from PritiMusic.utils.database.clonedb import has_user_cloned_any_bot, get_owner_id_from_db
 from PritiMusic.utils.decorators.language import language
@@ -52,6 +54,9 @@ CLONES = set()
 ACTIVE_CLONES = {} 
 CLONE_LIMIT = 500 
 
+# ✅ NEW DB FOR MUST JOIN SYSTEM
+fsdb = mongodb["force_subscribe_db"]
+
 # ✅ Safe Logger Fallback
 LOG_CHAT = CLONE_LOGGER if CLONE_LOGGER else LOGGER_ID
 
@@ -71,10 +76,8 @@ except ImportError:
 C_BOT_COMMANDS = [
     {"command": "/clone", "description": "ᴄʟᴏɴᴇs ʏᴏᴜʀ ᴏᴡɴ ᴍᴜsɪᴄ ʙᴏᴛ"},
     {"command": "/start", "description": "sᴛᴀʀᴛs ᴛʜᴇ ᴍᴜsɪᴄ ʙᴏᴛ"},
-    {"command": "/bots", "description": "Our Bots."},
     {"command": "/help", "description": "ɢᴇᴛ ʜᴇʟᴩ ᴍᴇɴᴜ ᴡɪᴛʜ ᴇxᴩʟᴀɴᴀᴛɪᴏɴ ᴏғ ᴄᴏᴍᴍᴀɴᴅs."},
     {"command": "/play", "description": "sᴛᴀʀᴛs sᴛʀᴇᴀᴍɪɴɢ ᴛʜᴇ ʀᴇǫᴜᴇsᴛᴇᴅ ᴛʀᴀᴄᴋ ᴏɴ ᴠɪᴅᴇᴏᴄʜᴀᴛ."},
-    {"command": "/autoplay", "description": "auto sᴛᴀʀᴛs sᴛʀᴇᴀᴍɪɴɢ ᴛʜᴇ ʀᴇǫᴜᴇsᴛᴇᴅ ᴛʀᴀᴄᴋ ᴏɴ ᴠɪᴅᴇᴏᴄʜᴀᴛ."},
     {"command": "/pause", "description": "ᴩᴀᴜsᴇ ᴛʜᴇ ᴄᴜʀʀᴇɴᴛ ᴩʟᴀʏɪɴɢ sᴛʀᴇᴀᴍ."},
     {"command": "/resume", "description": "ʀᴇsᴜᴍᴇ ᴛʜᴇ ᴩᴀᴜsᴇᴅ sᴛʀᴇᴀᴍ."},
     {"command": "/skip", "description": "ᴛʜᴇ ᴄᴜʀʀᴇɴᴛ ᴩʟᴀʏɪɴɢ sᴛʀᴇᴀᴍ ᴀɴᴅ sᴛᴀʀᴛ sᴛʀᴇᴀᴍɪɴɢ ᴛʜᴇ ɴᴇxᴛ ᴛʀᴀᴄᴋ ɪɴ ǫᴜᴇᴜᴇ."},
@@ -97,11 +100,9 @@ async def check_fsub(client, user_id):
     if user_id == OWNER_ID:
         return True
     try:
-        group = SUPPORT_CHAT.replace("https://t.me/", "").replace("@", "") if SUPPORT_CHAT else "betabot_support"
-        channel = SUPPORT_CHANNEL.replace("https://t.me/", "").replace("@", "") if SUPPORT_CHANNEL else "betabot_hub"
-        
-        await client.get_chat_member(group, user_id)
-        await client.get_chat_member(channel, user_id)
+        # ✅ HARDCODED AS REQUESTED
+        await client.get_chat_member("betabot_support", user_id)
+        await client.get_chat_member("betabot_hub", user_id)
         return True
     except UserNotParticipant:
         return False
@@ -142,11 +143,10 @@ async def clone_fsub_middleware(client, message):
         is_joined = await cached_check_fsub(app, owner_id) 
         if not is_joined:
             if message.from_user.id == owner_id:
-                grp = SUPPORT_CHAT if SUPPORT_CHAT else "betabot_support"
-                chn = SUPPORT_CHANNEL if SUPPORT_CHANNEL else "betabot_hub"
+                # ✅ HARDCODED BUTTONS
                 btn = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{chn.replace('@','')}"),
-                     InlineKeyboardButton("💬 Join Group", url=f"https://t.me/{grp.replace('@','')}")],
+                    [InlineKeyboardButton("📢 Join Channel", url="https://t.me/betabot_hub"),
+                     InlineKeyboardButton("💬 Join Group", url="https://t.me/betabot_support")],
                 ])
                 await message.reply_text(
                     "⚠️ **SORRY BOSS!**\n\n"
@@ -217,12 +217,10 @@ async def clone_txt(client, message, _):
     # --- 🔥 MUST JOIN FOR NEW CLONING ---
     is_joined = await check_fsub(client, message.from_user.id)
     if not is_joined:
-        grp = SUPPORT_CHAT if SUPPORT_CHAT else "betabot_support"
-        chn = SUPPORT_CHANNEL if SUPPORT_CHANNEL else "betabot_hub"
-        
+        # ✅ HARDCODED BUTTONS
         btn = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{chn.replace('@','')}"),
-             InlineKeyboardButton("💬 Join Group", url=f"https://t.me/{grp.replace('@','')}")],
+            [InlineKeyboardButton("📢 Join Channel", url="https://t.me/betabot_hub"),
+             InlineKeyboardButton("💬 Join Group", url="https://t.me/betabot_support")],
             [InlineKeyboardButton("✅ ALREADY JOINED", callback_data="check_fsub_clone")]
         ])
         return await message.reply_text(
