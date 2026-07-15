@@ -202,6 +202,22 @@ async def set_custom_welcome(client, message):
     await message.reply("**✅ ᴄᴜsᴛᴏᴍ ᴡᴇʟᴄᴏᴍᴇ ᴡɪᴛʜ ʙᴜᴛᴛᴏɴs sᴇᴛ sᴜᴄᴄᴇssғᴜʟʟʏ!**")
 
 
+# 🔴 Clear Custom Welcome
+@Client.on_message(filters.command("cwelcome") & filters.group)
+async def clear_custom_welcome(client, message):
+    user = await client.get_chat_member(message.chat.id, message.from_user.id)
+    if user.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
+        return await message.reply("**sᴏʀʀʏ ᴏɴʟʏ ᴀᴅᴍɪɴs ᴄᴀɴ ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ!**")
+
+    chat_id = message.chat.id
+    
+    if chat_id in custom_welcomes:
+        del custom_welcomes[chat_id]
+        await message.reply("**✅ ᴄᴜsᴛᴏᴍ ᴡᴇʟᴄᴏᴍᴇ ᴄʟᴇᴀʀᴇᴅ!\n\nɴᴏᴡ ᴅᴇғᴀᴜʟᴛ ɪᴍᴀɢᴇ ᴡᴇʟᴄᴏᴍᴇ ᴡɪʟʟ ʙᴇ ᴜsᴇᴅ.**")
+    else:
+        await message.reply("**⚠️ ɴᴏ ᴄᴜsᴛᴏᴍ ᴡᴇʟᴄᴏᴍᴇ ɪs sᴇᴛ ғᴏʀ ᴛʜɪs ɢʀᴏᴜᴘ.**")
+
+
 # 🔴 Set Auto-Delete Time
 @Client.on_message(filters.command("weltime") & filters.group)
 async def set_weltime(client, message):
