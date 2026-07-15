@@ -6,9 +6,11 @@ Active Chats Plugin for PritiMusic
 from pyrogram import filters
 from pyrogram.types import Message
 from unidecode import unidecode
+from datetime import datetime
 
 from PritiMusic import app, userbot 
 from PritiMusic.misc import SUDOERS
+from PritiMusic.core.mongo import mongodb  
 from PritiMusic.utils.database import (
     get_active_chats,
     get_active_video_chats,
@@ -18,6 +20,25 @@ from PritiMusic.utils.database import (
 from PritiMusic.utils.database.clonedb import get_served_chats_clone, clonebotdb
 
 POWERED_BY = "🤞 **𝐏ᴏᴡєʀєᴅ 𝐁ʏ ➛ BETA BOTS.🙂❤️**"
+
+# --- DATABASE FOR TODAY'S STATS ---
+daily_statsdb = mongodb["daily_stats"]
+
+async def get_today_stats():
+    """Fetches today's joined/left count AND auto-cleans old data to save storage."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    # 🧹 AUTO CLEANUP: Aaj ki date ke alawa jitne bhi purane records hain, unko delete kar dega
+    try:
+        await daily_statsdb.delete_many({"date": {"$ne": today}})
+    except Exception:
+        pass
+        
+    stats = await daily_statsdb.find_one({"date": today})
+    if stats:
+        return stats.get("added", 0), stats.get("removed", 0)
+    return 0, 0
+
 
 # --- HELPERS ---
 async def get_chat_link(chat_id: int) -> str:
@@ -51,17 +72,11 @@ async def bot_data_stats(_, message: Message):
     # PART 1: BOT DATA (GROUPS, ADMIN, TODAY'S STATS)
     # ---------------------------------------------------------
     total_chats = len(await get_served_chats()) 
+    added_today, removed_today = await get_today_stats() # FETCHED FROM DB
     
-    # TODO: Connect these variables to your database counters for real data
-    admin_groups = 0    
-    normal_groups = 0   
-    added_today = 0     
-    removed_today = 0   
-    
-    # Fallback calculation if DB tracking isn't synced yet
-    if admin_groups + normal_groups != total_chats:
-        admin_groups = int(total_chats * 0.6) 
-        normal_groups = total_chats - admin_groups
+    # Mocking admin/normal groups if actual logic isn't present
+    admin_groups = int(total_chats * 0.6) 
+    normal_groups = total_chats - admin_groups
         
     admin_bar, admin_pct = generate_progress_bar(admin_groups, total_chats)
     normal_bar, normal_pct = generate_progress_bar(normal_groups, total_chats)
@@ -79,7 +94,7 @@ async def bot_data_stats(_, message: Message):
     )
     
     # ---------------------------------------------------------
-    # PART 2: MAIN BOT ASSISTANTS (MERGED ASS FEATURE)
+    # PART 2: MAIN BOT ASSISTANTS
     # ---------------------------------------------------------
     text += f"> 👑 **𝐌𝐀𝐈𝐍 𝐁𝐎𝐓 𝐀𝐒𝐒𝐈𝐒𝐓𝐀𝐍𝐓𝐒:**\n"
     main_total_groups = 0
@@ -113,11 +128,15 @@ async def bot_data_stats(_, message: Message):
     text += f">\n> 📈 **Main Assistants Total:** `{main_total_groups}`\n>\n"
     
     # ---------------------------------------------------------
-    # PART 3: CLONE BOT ASSISTANTS (MERGED ASS FEATURE)
+    # PART 3: CLONE BOT ASSISTANTS (WITH TOTAL CLONES COUNT)
     # ---------------------------------------------------------
-    text += f"> 🤖 **𝐂𝐋𝐎𝐍𝐄 𝐁𝐎𝐓 𝐀𝐒𝐒𝐈𝐒𝐓𝐀𝐍𝐓𝐒:**\n"
-    clone_total_groups = 0
     all_clones = await clonebotdb.find({}).to_list(length=None)
+    total_clones_count = len(all_clones)
+    
+    text += f"> 🤖 **𝐂𝐋𝐎𝐍𝐄 𝐁𝐎𝐓𝐒 & 𝐀𝐒𝐒𝐈𝐒𝐓𝐀𝐍𝐓𝐒:**\n"
+    text += f"> 👾 **Total Clone Bots:** `{total_clones_count}`\n"
+    
+    clone_total_groups = 0
     clone_count = 0
     
     for clone in all_clones:
@@ -125,15 +144,31 @@ async def bot_data_stats(_, message: Message):
         if not bot_id: continue
         
         try:
-            ass_details = await get_assistant(bot_id) 
-            if not ass_details:
-                continue
-                
             clone_count += 1
-            ass_name = ass_details.get("name", "Unknown")
-            ass_uname = f"@{ass_details.get('username')}" if ass_details.get("username") else "No Username"
             
-            c_groups = ass_details.get("total_groups", 0) 
+            # Extract directly from clone DB structure
+            ass_name = clone.get("ass_name", "Unknown Assistant")
+            ass_username = clone.get("ass_username", "")
+            ass_uname = f"@{ass_username}" if ass_username else "No Username"
+            
+            # Fallback if DB didn't save ass_name directly
+            if ass_name == "Unknown Assistant":
+                try:
+                    ass_details = await get_assistant(bot_id)
+                    if ass_details:
+                        ass_name = ass_details.get("name", "Unknown Assistant")
+                        _un = ass_details.get("username")
+                        ass_uname = f"@{_un}" if _un else "No Username"
+                except:
+                    pass
+            
+            # Get connected groups count for this clone
+            try:
+                c_served = await get_served_chats_clone(bot_id)
+                c_groups = len(c_served) if c_served else 0
+            except:
+                c_groups = 0
+
             clone_total_groups += c_groups
             
             text += f"> **{clone_count}.** {ass_name} ({ass_uname}) [Clone: `{bot_id}`]\n"
@@ -144,7 +179,7 @@ async def bot_data_stats(_, message: Message):
     if clone_count == 0:
         text += ">  └ No Clone Bot Assistants found.\n"
         
-    text += f">\n> 📈 **Clone Assistants Total:** `{clone_total_groups}`\n>\n"
+    text += f">\n> 📈 **Clone Assistants Total Groups:** `{clone_total_groups}`\n>\n"
     
     # ---------------------------------------------------------
     # PART 4: OVERALL SUMMARY
@@ -157,7 +192,7 @@ async def bot_data_stats(_, message: Message):
 
 
 # ===================================================
-# MAIN BOT ACTIVE CALLS COMMANDS
+# MAIN BOT ACTIVE CALLS COMMANDS 
 # ===================================================
 
 @app.on_message(filters.command(["activevc", "vc", "activevoice"]) & SUDOERS)
@@ -241,7 +276,7 @@ async def active_video_chats(_, message: Message):
 
 
 # ===================================================
-# CLONE CALL COMMANDS
+# CLONE CALL COMMANDS 
 # ===================================================
 
 @app.on_message(filters.command(["cvc"]) & SUDOERS)
