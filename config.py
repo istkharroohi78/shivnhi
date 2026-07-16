@@ -15,7 +15,7 @@ OWNER_USERNAME = getenv("OWNER_USERNAME", "")
 BOT_USERNAME = getenv("BOT_USERNAME", "")
 BOT_NAME = getenv("BOT_NAME", "")
 ASSUSERNAME = getenv("ASSUSERNAME", "")
-BOT_LINK = getenv("BOT_LINK", "https://t.me/bhoot_musicbot")
+BOT_LINK = getenv("BOT_LINK", "https://t.me/royal_musics_bot")
 
 MONGO_DB_URI = getenv("MONGO_DB_URI")
 
@@ -82,8 +82,11 @@ PLAYLIST_ID = -1003812209413
 TG_AUDIO_FILESIZE_LIMIT = int(getenv("TG_AUDIO_FILESIZE_LIMIT", "5242880000"))
 TG_VIDEO_FILESIZE_LIMIT = int(getenv("TG_VIDEO_FILESIZE_LIMIT", "5242880000"))
 
+# 🟢 4 ASSISTANT SESSIONS ADDED HERE
 STRING1 = getenv("STRING_SESSION", "")
 STRING2 = getenv("STRING_SESSION2", "")
+STRING3 = getenv("STRING_SESSION3", "")
+STRING4 = getenv("STRING_SESSION4", "")
 
 START_IMG_URL = getenv("START_IMG_URL", "https://files.catbox.moe/pozv5s.jpg").split()
 HELP_IMG_URL = getenv("HELP_IMG_URL", "https://files.catbox.moe/dk92ep.jpg").split()
