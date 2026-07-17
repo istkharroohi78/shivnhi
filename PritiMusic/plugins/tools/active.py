@@ -4,11 +4,14 @@ Active Chats Plugin for PritiMusic
 """
 
 import os
+import asyncio
 from pyrogram import filters
 from pyrogram.types import Message
+from pyrogram.enums import ChatType
 from unidecode import unidecode
 from datetime import datetime
 
+import config
 from PritiMusic import app, userbot 
 from PritiMusic.misc import SUDOERS
 from PritiMusic.core.mongo import mongodb  
@@ -193,7 +196,6 @@ async def clone_bot_data_stats(_, message: Message):
     text += "> ======================\n"
     text += f"> {POWERED_BY}"
 
-    # Limit check: Agar clones bahut zyada ho gaye to file me bhej dega
     if len(text) > 4000:
         with open("clone_data.txt", "w", encoding="utf-8") as f:
             f.write(text.replace(">", "").replace("`", "").replace("*", ""))
@@ -202,6 +204,125 @@ async def clone_bot_data_stats(_, message: Message):
         os.remove("clone_data.txt")
     else:
         await mystic.edit_text(text, disable_web_page_preview=True)
+
+
+# ===================================================
+# 3. ASSISTANT AUTO-LEAVE COMMAND (/aleave) 🚀 NEW
+# ===================================================
+
+@app.on_message(filters.command(["aleave"]) & SUDOERS)
+async def auto_leave_chats(_, message: Message):
+    args = message.text.split()
+    if len(args) < 2:
+        return await message.reply_text("⚠️ **Usage:** `/aleave [number]` or `/aleave all`")
+        
+    arg = args[1].lower()
+    if arg == "all":
+        limit = "all"
+    else:
+        try:
+            limit = int(arg)
+            if limit <= 0:
+                raise ValueError
+        except ValueError:
+            return await message.reply_text("⚠️ **Invalid input!** Please provide a valid number or 'all'.")
+
+    mystic = await message.reply_text("⏳ **Scanning Assistant's chats...**\n*(Finding groups & channels)*")
+
+    # Fetch Logger Group ID to protect it from leaving
+    try:
+        logger_id = int(getattr(config, "LOG_GROUP_ID", getattr(config, "LOGGER_ID", 0)))
+    except:
+        logger_id = 0
+
+    active_clients = []
+    for attr in ["one", "two", "three", "four", "five"]:
+        if hasattr(userbot, attr):
+            client = getattr(userbot, attr)
+            if client:
+                active_clients.append(client)
+
+    targets = []
+    for client in active_clients:
+        try:
+            async for dialog in client.get_dialogs():
+                chat_id = dialog.chat.id
+                chat_type = dialog.chat.type
+                
+                # Protect logger group
+                if chat_id == logger_id:
+                    continue
+                    
+                if chat_type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                    targets.append((client, chat_id, "group"))
+                elif chat_type == ChatType.CHANNEL:
+                    targets.append((client, chat_id, "channel"))
+        except Exception:
+            pass
+
+    if limit != "all":
+        targets = targets[:limit]
+        
+    total_targets = len(targets)
+    if total_targets == 0:
+        return await mystic.edit_text("📭 **Assistant is not in any groups or channels to leave.**")
+
+    await mystic.edit_text(f"🚀 **Target Locked:** `{total_targets}` chats.\nStarting leave process...")
+
+    left_groups = 0
+    left_channels = 0
+    failed = 0
+
+    for i, (client, chat_id, c_type) in enumerate(targets, 1):
+        try:
+            await client.leave_chat(chat_id)
+            if c_type == "group":
+                left_groups += 1
+            else:
+                left_channels += 1
+        except Exception:
+            failed += 1
+            
+        await asyncio.sleep(0.5) # FloodWait se bachne ke liye delay
+        
+        # Update progress every 5 chats or at the very end
+        if i % 5 == 0 or i == total_targets:
+            bar, pct = generate_progress_bar(i, total_targets)
+            try:
+                await mystic.edit_text(
+                    f"🏃‍♂️ **Assistant is leaving chats...**\n\n"
+                    f"**Progress:**\n`[{bar}] {pct}%`\n\n"
+                    f"✅ **Processed:** `{i}/{total_targets}`\n"
+                    f"❌ **Failed:** `{failed}`\n\n"
+                    f"{POWERED_BY}"
+                )
+            except Exception:
+                pass
+
+    final_text = (
+        f"✅ **ASSISTANT AUTO-LEAVE COMPLETE**\n\n"
+        f"**Total Left:** `{left_groups + left_channels}`\n"
+        f" ├ 👥 **Groups:** `{left_groups}`\n"
+        f" └ 📢 **Channels:** `{left_channels}`\n"
+        f"❌ **Failed:** `{failed}`\n\n"
+        f"{POWERED_BY}"
+    )
+    
+    await mystic.edit_text(final_text)
+    
+    # Send Logs to the Logger Group
+    if logger_id:
+        try:
+            await app.send_message(
+                logger_id, 
+                f"🚨 **Auto-Leave Report (/aleave)**\n\n"
+                f"Assistant removed itself from `{left_groups + left_channels}` chats.\n"
+                f"👥 Groups: `{left_groups}`\n"
+                f"📢 Channels: `{left_channels}`\n"
+                f"❌ Failed/Errors: `{failed}`\n"
+            )
+        except Exception:
+            pass
 
 
 # ===================================================
