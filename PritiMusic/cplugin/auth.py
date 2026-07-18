@@ -34,7 +34,9 @@ async def auth(client: Client, message: Message, _):
             return await message.reply_text(_["general_1"])
     
     user = await extract_user(message)
-    token = int_to_alpha(user.id)
+    
+    # ✅ FIX: Added await here so it doesn't crash MongoDB
+    token = await int_to_alpha(user.id)
     
     _check = await get_authuser_names(message.chat.id)
     count = len(_check)
@@ -79,7 +81,9 @@ async def unauthusers(client: Client, message: Message, _):
             return await message.reply_text(_["general_1"])
     
     user = await extract_user(message)
-    token = int_to_alpha(user.id)
+    
+    # ✅ FIX: Added await here so it doesn't crash MongoDB
+    token = await int_to_alpha(user.id)
     
     deleted = await delete_authuser(message.chat.id, token)
     
