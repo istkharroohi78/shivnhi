@@ -26,10 +26,8 @@ async def auth(client, message: Message, _):
             
     user = await extract_user(message)
     
-    try:
-        token = await int_to_alpha(user.id)
-    except:
-        token = int_to_alpha(user.id)
+    # ✅ Fixed: Await directly without the try/except fallback that crashed MongoDB
+    token = await int_to_alpha(user.id)
         
     _check = await get_authuser_names(message.chat.id)
     count = len(_check)
@@ -68,10 +66,9 @@ async def unauthusers(client, message: Message, _):
             return await message.reply_text(_["general_1"])
             
     user = await extract_user(message)
-    try:
-        token = await int_to_alpha(user.id)
-    except:
-        token = int_to_alpha(user.id)
+    
+    # ✅ Fixed: Await directly without the try/except fallback that crashed MongoDB
+    token = await int_to_alpha(user.id)
         
     deleted = await delete_authuser(message.chat.id, token)
     
@@ -90,7 +87,7 @@ async def unauthusers(client, message: Message, _):
     filters.command(["authlist", "authusers"], prefixes=["/", "!"]) & filters.group & ~BANNED_USERS
 )
 @language
-async def authusers(client, message: Message, _):
+async def authusers_list(client, message: Message, _):
     _wtf = await get_authuser_names(message.chat.id)
     if not _wtf:
         return await message.reply_text(_["setting_4"])
