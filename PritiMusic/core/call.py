@@ -9,7 +9,7 @@ from typing import Union
 from pyrogram import Client
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.enums import ParseMode
-from pyrogram.errors import FloodWait  # Added to catch FloodWait specifically
+from pyrogram.errors import FloodWait  # Added to catch FloodWait specifically
 
 from pytgcalls import PyTgCalls
 from pytgcalls.types import MediaStream, AudioQuality, VideoQuality
@@ -18,7 +18,7 @@ import config
 from PritiMusic import LOGGER, YouTube, app
 from PritiMusic.misc import db
 from PritiMusic.utils.database import (
-    add_active_chat,
+add_active_chat,
     add_active_video_chat,
     get_lang,
     get_loop,
