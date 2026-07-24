@@ -140,6 +140,110 @@ class Call(PyTgCalls):
         self.custom_assistants = {} 
         self.active_clients = {} 
 
+    # 🟢 UPCOMING SONG PREFETCH SYSTEM
+    async def _prefetch_autoplay(self, chat_id):
+        try:
+            from PritiMusic.utils.database.autoplay import is_autoplay_group
+            auto_on = await is_autoplay_group(chat_id)
+            if not auto_on:
+                return
+            
+            if len(db.get(chat_id, [])) > 1:
+                return 
+                
+            current = db[chat_id][0]
+            raw_title = current.get("title", "Unknown Title")
+            title_lower = str(raw_title).lower()
+            last_vidid = str(current.get("vidid", ""))
+            
+            keywords_map = {
+                "Hindi": ["arijit singh", "shreya ghoshal", "atif aslam", "neha kakkar", "jubin nautiyal", "darshan raval", "armaan malik", "sonu nigam", "badshah", "sunidhi chauhan", "udit narayan", "kumar sanu", "alka yagnik", "sachet tandon", "parampara", "b praak", "vishal mishra", "shilpa rao", "kk", "mohit chauhan", "ar rahman", "pritam", "mithoon"],
+                "Punjabi": ["sidhu moose wala", "karan aujla", "diljit dosanjh", "ap dhillon", "amrit maan", "shubh", "kaka", "hardy sandhu", "guru randhawa", "jass manak", "parmish verma", "jaani", "ammy virk", "garry sandhu"],
+                "Bhojpuri": ["pawan singh", "khesari lal yadav", "shilpi raj", "antra singh", "pramod premi", "ritesh pandey", "arvind akela kallu", "gunjan singh", "samar singh", "neha raj"],
+                "Haryanvi": ["sapna choudhary", "renuka panwar", "gulzaar chhaniwala", "sumit goswami", "raju punjabi", "amit saini rohtakiya", "pranjal dahiya", "md kd", "masoom sharma"],
+                "English": ["taylor swift", "justin bieber", "ed sheeran", "ariana grande", "the weeknd", "drake", "eminem"]
+            }
+
+            ignore_artist_kws = ["hindi", "punjabi", "bhojpuri", "haryanvi", "english"]
+            detected_lang, detected_artist, detected_mood = None, None, None
+            
+            moods_list = ["sad", "love", "romantic", "lofi", "chill", "party", "mashup", "emotional", "heartbreak", "dance", "dj"]
+            for mood in moods_list:
+                if mood in title_lower:
+                    detected_mood = mood
+                    break
+
+            for lang, kws in keywords_map.items():
+                for kw in kws:
+                    if kw in title_lower:
+                        detected_lang = lang
+                        if kw not in ignore_artist_kws:
+                            detected_artist = kw.title()
+                        break
+                if detected_lang:
+                    break
+
+            artist_or_lang = " / ".join(filter(None, [detected_artist, detected_lang]))
+            if not artist_or_lang:
+                artist_or_lang = "Algorithmic Match"
+
+            query_parts = []
+            if detected_artist: query_parts.append(detected_artist)
+            if detected_lang and not detected_artist: query_parts.append(detected_lang)
+                
+            if query_parts:
+                if detected_mood: query_parts.append(detected_mood)
+                query_parts.append("audio track")
+                search_query = " ".join(query_parts)
+            else:
+                search_query = f"More like {raw_title} audio track"
+
+            recommendation = await YouTube.autoplay(last_vidid=last_vidid, title=search_query, max_duration=600)
+            
+            if recommendation:
+                new_track = {
+                    "title": str(recommendation.get("title", "Unknown Title")),
+                    "dur": recommendation.get("duration_min", "0:00"),
+                    "streamtype": current.get("streamtype", "audio"),
+                    "by": "Spotify AutoPlay 🤖",
+                    "user_id": 0,
+                    "chat_id": chat_id,
+                    "file": f"vid_{recommendation.get('vidid', '')}",
+                    "vidid": str(recommendation.get("vidid", "")),
+                    "seconds": recommendation.get("duration_sec", 0),
+                    "old_dur": recommendation.get("duration_min", "0:00"),
+                    "old_second": 0,
+                    "played": 0,
+                    "client": current.get("client", app),
+                    "artist_or_lang": artist_or_lang
+                }
+                
+                # 🟢 Upcoming Song Group Notification (Creates popup for VC users)
+                chat_client = current.get("client", app)
+                original_chat_id = current.get("chat_id", chat_id)
+                try:
+                    upcoming_msg = await chat_client.send_message(
+                        original_chat_id,
+                        f"🔜 **Upcoming Next (AutoPlay)**\n\n"
+                        f"> **Title:** `{new_track['title']}`\n"
+                        f"> **Artist/Vibe:** `{artist_or_lang}`\n"
+                    )
+                    new_track["upcoming_msg_id"] = upcoming_msg.id
+                except:
+                    pass
+
+                db[chat_id].append(new_track)
+                
+                # Background download
+                is_video = True if str(new_track["streamtype"]) == "video" else False
+                try:
+                    await YouTube.download(new_track["vidid"], False, videoid=True, video=is_video)
+                except Exception:
+                    pass 
+
+        except Exception as e:
+            LOGGER(__name__).warning(f"Prefetch task ignored: {e}")
+
     async def _safe_change_stream(self, client, chat_id, file_path, video=False, extra_args=""):
         if not video:
             stream = MediaStream(file_path, audio_parameters=AudioQuality.HIGH, ffmpeg_parameters=extra_args)
@@ -374,7 +478,8 @@ class Call(PyTgCalls):
         await music_on(chat_id)
         if video: await add_active_video_chat(chat_id)
         
-        if await is_autoend():
+        # 🟢 TYPERROR FIX APPLIED HERE
+        if await is_autoend(chat_id):
             counter[chat_id] = {}
             try:
                 users = len(await assistant_to_join.get_participants(chat_id))
@@ -400,6 +505,7 @@ class Call(PyTgCalls):
             
             if popped: await auto_clean(popped)
             
+            # 🟢 FALLBACK AUTOPLAY (Old feature kept intact)
             if not check:
                 from PritiMusic.utils.database.autoplay import is_autoplay_group
                 auto_on = await is_autoplay_group(chat_id)
@@ -442,8 +548,6 @@ class Call(PyTgCalls):
                             if detected_lang:
                                 break
 
-                        # 🟢 SPOTIFY RADIO STYLE QUERY BUILDER
-                        # Adding "audio track" avoids 1-hour compilations and forces single songs
                         query_parts = []
                         if detected_artist:
                             query_parts.append(detected_artist)
@@ -453,15 +557,12 @@ class Call(PyTgCalls):
                         if query_parts:
                             if detected_mood:
                                 query_parts.append(detected_mood)
-                            # Key change: searching for "audio track" / "single" like Spotify
                             query_parts.append("audio track")
                             search_query = " ".join(query_parts)
                         else:
-                            # Rely on YouTube's exact algorithm to find the literal "Next Track"
                             search_query = f"More like {raw_title} audio track"
 
-                        # Use the algorithmic recommendation (last_vidid) as primary, with the smart search as the filter/fallback
-                        recommendation = await YouTube.autoplay(last_vidid=last_vidid, title=search_query, max_duration=600) # Restricted max_dur to 10 mins to avoid jukeboxes
+                        recommendation = await YouTube.autoplay(last_vidid=last_vidid, title=search_query, max_duration=600) 
                         
                         if recommendation:
                             db[chat_id].append({
@@ -541,6 +642,13 @@ class Call(PyTgCalls):
             videoid = db[chat_id][0]["vidid"]
             chat_client = db[chat_id][0].get("client") or app
 
+            # 🟢 CLEAN UP UPCOMING NOTIFICATION BEFORE NEXT TRACK STARTS
+            upcoming_msg_id = db[chat_id][0].get("upcoming_msg_id")
+            if upcoming_msg_id:
+                try:
+                    await chat_client.delete_messages(original_chat_id, upcoming_msg_id)
+                except: pass
+
             db[chat_id][0]["played"] = 0
             exis = db[chat_id][0].get("old_dur")
             if exis:
@@ -585,7 +693,12 @@ class Call(PyTgCalls):
                 except: pass
                 
             elif "vid_" in queued:
-                mystic = await chat_client.send_message(original_chat_id, _["call_7"])
+                # 🟢 NORMAL MYSTIC LOADING MESSAGE (will be deleted later)
+                if db[chat_id][0].get("by") == "Spotify AutoPlay 🤖":
+                    mystic = await chat_client.send_message(original_chat_id, "🚀 **Switching Track...**")
+                else:
+                    mystic = await chat_client.send_message(original_chat_id, _["call_7"])
+                    
                 try:
                     file_path, direct = await YouTube.download(videoid, mystic, videoid=True, video=video)
                 except:
@@ -607,6 +720,8 @@ class Call(PyTgCalls):
                 
                 img = await get_thumb(videoid, user_id, chat_client) or get_random_img(config.PLAYLIST_IMG_URL)
                 button = stream_markup(_, chat_id)
+                
+                # 🟢 MYSTIC DELETE PRESERVED
                 try: await mystic.delete()
                 except: pass
                 
@@ -680,6 +795,10 @@ class Call(PyTgCalls):
                             db[chat_id][0]["mystic"] = run
                             db[chat_id][0]["markup"] = "stream"
                     except: pass
+
+        # 🟢 TRIGGER BACKGROUND PREFETCH FOR THE UPCOMING SONG
+        if db.get(chat_id) and len(db[chat_id]) == 1:
+            asyncio.create_task(self._prefetch_autoplay(chat_id))
 
     async def ping(self):
         pings = []
