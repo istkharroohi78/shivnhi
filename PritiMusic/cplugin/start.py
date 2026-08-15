@@ -57,7 +57,7 @@ def create_btn(text, cb=None, url=None, user_id=None, style=ButtonStyle.PRIMARY,
 # INTERNAL BUTTON HELPERS
 # =====================================================================
 
-def make_start_panel(bot_username, owner_url, 
+def make_start_panel(bot_username, owner_id, 
                      txt_add, txt_support, txt_channel, txt_owner, txt_help, 
                      support_chat, support_channel,
                      custom_btn=None, btn_pos="TOP"):
@@ -84,7 +84,11 @@ def make_start_panel(bot_username, owner_url,
 
     # 4. Owner Button (Placed strictly beneath Support & Channel)
     if txt_owner != "HIDDEN":
-        buttons.append([create_btn(text="the shiv", url=owner_url, style=s_map[1])])
+        if owner_id:
+            # Agar ID hai toh user_id parameter pass hoga jisme username ki zarurat nahi
+            buttons.append([create_btn(text=txt_owner, user_id=owner_id, style=s_map[1])])
+        else:
+            buttons.append([create_btn(text=txt_owner, url="https://t.me/Telegram", style=s_map[1])])
 
     # --- Custom Button Logic ---
     if custom_btn and custom_btn.get("text"):
@@ -294,7 +298,6 @@ async def start_pm(client, message: Message, _):
 
     C_SUPPORT_CHAT = format_link(raw_support)
     C_SUPPORT_CHANNEL = format_link(raw_channel)
-    OWNER_URL = f"tg://openmessage?user_id={C_BOT_OWNER_ID}" if C_BOT_OWNER_ID else "https://t.me/Telegram"
 
     # ✅ 1. RANDOM REACTION LOGIC
     if raw_reaction:
@@ -375,7 +378,8 @@ async def start_pm(client, message: Message, _):
                 txt, url = chosen_str.split("-", 1)
                 custom_button_data = {"text": txt.strip(), "url": url.strip()}
     
-    markup = make_start_panel(a.username, OWNER_URL,
+    # 🔗 Direct ID-Based Link using C_BOT_OWNER_ID
+    markup = make_start_panel(a.username, C_BOT_OWNER_ID,
                               txt_add, txt_support, txt_channel, txt_owner, txt_help,
                               C_SUPPORT_CHAT, C_SUPPORT_CHANNEL,
                               custom_button_data, btn_pos)
@@ -393,17 +397,17 @@ async def start_pm(client, message: Message, _):
     else:
         bot_name_upper = a.first_name.upper()
         caption = (
-            f"───[ ˹ {bot_name_upper} ˼ 🎵 ]───\n\n"
-            f"Hᴏʟᴏᴏ - !! {user_mention}\n\n"
-            f"I ᴀᴍ ᴛʜᴇ ғᴀsᴛ ᴀɴᴅ ᴘᴏᴡᴇʀғᴜʟ ᴍᴜsɪᴄ ᴘʟᴀʏᴇʀ ʙᴏᴛ ᴡɪᴛʜ sᴏᴍᴇ ᴀᴡᴇsᴏᴍᴇ ғᴇᴀᴛᴜʀᴇs.\n\n"
+            f"<b>───[ ˹ {bot_name_upper} ˼ 🎵 ]───</b>\n\n"
+            f"<b>Hᴏʟᴏᴏ - !! <tg-spoiler>{user_mention}</tg-spoiler></b>\n\n"
+            f"<b>I ᴀᴍ ᴛʜᴇ ғᴀsᴛ ᴀɴᴅ ᴘᴏᴡᴇʀғᴜʟ ᴍᴜsɪᴄ ᴘʟᴀʏᴇʀ ʙᴏᴛ ᴡɪᴛʜ sᴏᴍᴇ ᴀᴡᴇsᴏᴍᴇ ғᴇᴀᴛᴜʀᴇs.</b>\n\n"
             f"<blockquote>"
-            f"🎶 ʜɪɢʜ-ǫᴜᴧʟɪᴛʏ ᴍᴜꜱɪᴄ ᴘʟᴧʏєʀ ʙσᴛ\n"
-            f"ғσʀ ᴛєʟєɢʀᴧϻ ɢʀσᴜᴘꜱ & ᴄʜᴧηηєʟꜱ\n\n"
-            f"🔥 ɪηꜱᴛᴧηᴛ ꜱᴛʀєᴧϻɪηɢ\n"
-            f"❤️ ꜱϻσσᴛʜ ᴘʟᴧʏʙᴧᴄᴋ\n"
-            f"🎧 ᴄʀʏꜱᴛᴧʟ ꜱσᴜηᴅ | ησ ʟᴧɢ"
+            f"<b>🎶 ʜɪɢʜ-ǫᴜᴧʟɪᴛʏ ᴍᴜꜱɪᴄ ᴘʟᴧʏєʀ ʙσᴛ</b>\n"
+            f"<b>ғσʀ ᴛєʟєɢʀᴧϻ ɢʀσᴜᴘꜱ & ᴄʜᴧηηєʟꜱ</b>\n\n"
+            f"<b>🔥 ɪηꜱᴛᴧηᴛ ꜱᴛʀєᴧϻɪηɢ</b>\n"
+            f"<b>❤️ ꜱϻσσᴛʜ ᴘʟᴧʏʙᴧᴄᴋ</b>\n"
+            f"<b>🎧 ᴄʀʏꜱᴛᴧʟ ꜱσᴜηᴅ | ησ ʟᴧɢ</b>"
             f"</blockquote>\n\n"
-            f"Cʟɪᴄᴋ ᴏɴ ᴛʜᴇ ʜᴇʟᴘ ʙᴜᴛᴛᴏɴ ᴛᴏ ɢᴇᴛ ɪɴғᴏʀᴍᴀᴛɪᴏɴ ᴀʙᴏᴜᴛ ᴍʏ ᴍᴏᴅᴜʟᴇs ᴀɴᴅ ᴄᴏᴍᴍᴀɴᴅs."
+            f"<b>Cʟɪᴄᴋ ᴏɴ ᴛʜᴇ ʜᴇʟᴘ ʙᴜᴛᴛᴏɴ ᴛᴏ ɢᴇᴛ ɪɴғᴏʀᴍᴀᴛɪᴏɴ ᴀʙᴏᴜᴛ ᴍʏ ᴍᴏᴅᴜʟᴇs ᴀɴᴅ ᴄᴏᴍᴍᴀɴᴅs.</b>"
         )
 
     # Base payload settings
@@ -548,7 +552,6 @@ async def home_back_handler(client, CallbackQuery, _):
 
     C_SUPPORT_CHAT = format_link(raw_support)
     C_SUPPORT_CHANNEL = format_link(raw_channel)
-    OWNER_URL = f"tg://openmessage?user_id={C_BOT_OWNER_ID}" if C_BOT_OWNER_ID else "https://t.me/Telegram"
 
     custom_button_data = None
     if raw_custom_btn:
@@ -560,7 +563,8 @@ async def home_back_handler(client, CallbackQuery, _):
                 txt, url = chosen_str.split("-", 1)
                 custom_button_data = {"text": txt.strip(), "url": url.strip()}
     
-    markup = make_start_panel(a.username, OWNER_URL,
+    # 🔗 Direct ID-Based Link using C_BOT_OWNER_ID
+    markup = make_start_panel(a.username, C_BOT_OWNER_ID,
                               txt_add, txt_support, txt_channel, txt_owner, txt_help,
                               C_SUPPORT_CHAT, C_SUPPORT_CHANNEL,
                               custom_button_data, btn_pos)
@@ -578,17 +582,17 @@ async def home_back_handler(client, CallbackQuery, _):
     else:
         bot_name_upper = a.first_name.upper()
         caption = (
-            f"───[ ˹ {bot_name_upper} ˼ 🎵 ]───\n\n"
-            f"Hᴏʟᴏᴏ - !! {user_mention}\n\n"
-            f"I ᴀᴍ ᴛʜᴇ ғᴀsᴛ ᴀɴᴅ ᴘᴏᴡᴇʀғᴜʟ ᴍᴜsɪᴄ ᴘʟᴀʏᴇʀ ʙᴏᴛ ᴡɪᴛʜ sᴏᴍᴇ ᴀᴡᴇsᴏᴍᴇ ғᴇᴀᴛᴜʀᴇs.\n\n"
+            f"<b>───[ ˹ {bot_name_upper} ˼ 🎵 ]───</b>\n\n"
+            f"<b>Hᴏʟᴏᴏ - !! <tg-spoiler>{user_mention}</tg-spoiler></b>\n\n"
+            f"<b>I ᴀᴍ ᴛʜᴇ ғᴀsᴛ ᴀɴᴅ ᴘᴏᴡᴇʀғᴜʟ ᴍᴜsɪᴄ ᴘʟᴀʏᴇʀ ʙᴏᴛ ᴡɪᴛʜ sᴏᴍᴇ ᴀᴡᴇsᴏᴍᴇ ғᴇᴀᴛᴜʀᴇs.</b>\n\n"
             f"<blockquote>"
-            f"🎶 ʜɪɢʜ-ǫᴜᴧʟɪᴛʏ ᴍᴜꜱɪᴄ ᴘʟᴧʏєʀ ʙσᴛ\n"
-            f"ғσʀ ᴛєʟєɢʀᴧϻ ɢʀσᴜᴘꜱ & ᴄʜᴧηηєʟꜱ\n\n"
-            f"🔥 ɪηꜱᴛᴧηᴛ ꜱᴛʀєᴧϻɪηɢ\n"
-            f"❤️ ꜱϻσσᴛʜ ᴘʟᴧʏʙᴧᴄᴋ\n"
-            f"🎧 ᴄʀʏꜱᴛᴧʟ ꜱσᴜηᴅ | ησ ʟᴧɢ"
+            f"<b>🎶 ʜɪɢʜ-ǫᴜᴧʟɪᴛʏ ᴍᴜꜱɪᴄ ᴘʟᴧʏєʀ ʙσᴛ</b>\n"
+            f"<b>ғσʀ ᴛєʟєɢʀᴧϻ ɢʀσᴜᴘꜱ & ᴄʜᴧηηєʟꜱ</b>\n\n"
+            f"<b>🔥 ɪηꜱᴛᴧηᴛ ꜱᴛʀєᴧϻɪηɢ</b>\n"
+            f"<b>❤️ ꜱϻσσᴛʜ ᴘʟᴧʏʙᴧᴄᴋ</b>\n"
+            f"<b>🎧 ᴄʀʏꜱᴛᴧʟ ꜱσᴜηᴅ | ησ ʟᴧɢ</b>"
             f"</blockquote>\n\n"
-            f"Cʟɪᴄᴋ ᴏɴ ᴛʜᴇ ʜᴇʟᴘ ʙᴜᴛᴛᴏɴ ᴛᴏ ɢᴇᴛ ɪɴғᴏʀᴍᴀᴛɪᴏɴ ᴀʙᴏᴜᴛ ᴍʏ ᴍᴏᴅᴜʟᴇs ᴀɴᴅ ᴄᴏᴍᴍᴀɴᴅs."
+            f"<b>Cʟɪᴄᴋ ᴏɴ ᴛʜᴇ ʜᴇʟᴘ ʙᴜᴛᴛᴏɴ ᴛᴏ ɢᴇᴛ ɪɴғᴏʀᴍᴀᴛɪᴏɴ ᴀʙᴏᴜᴛ ᴍʏ ᴍᴏᴅᴜʟᴇs ᴀɴᴅ ᴄᴏᴍᴍᴀɴᴅs.</b>"
         )
 
     # 📸 SMART PHOTO LOGIC
