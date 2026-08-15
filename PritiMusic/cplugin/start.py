@@ -42,7 +42,6 @@ PREMIUM_EMOJIS = [
 def get_style_map():
     styles = [ButtonStyle.PRIMARY, ButtonStyle.SUCCESS, ButtonStyle.DANGER]
     random.shuffle(styles)
-    # Row me buttons ke hisaab se random color assign hoga
     return {1: styles[0], 2: styles[1], 3: styles[2]}
 
 # 🔘 Smart Button Creator (Now with user_id support)
@@ -74,7 +73,7 @@ def make_start_panel(bot_username, owner_url,
     if txt_help != "HIDDEN":
         buttons.append([create_btn(text=txt_help, cb="settings_back_helper", style=s_map[1])])
 
-    # 3. Support & Channel (Row of 2)
+    # 3. Support & Channel (Unified Row of 2)
     row_support = []
     if txt_support != "HIDDEN":
         row_support.append(create_btn(text=txt_support, url=support_chat, style=s_map[2]))
@@ -83,21 +82,19 @@ def make_start_panel(bot_username, owner_url,
     if row_support:
         buttons.append(row_support)
 
-    # 4. Owner Button
+    # 4. Owner Button (Placed strictly beneath Support & Channel)
     if txt_owner != "HIDDEN":
-        buttons.append([create_btn(text=txt_owner, url=owner_url, style=s_map[1])])
+        buttons.append([create_btn(text="the shiv", url=owner_url, style=s_map[1])])
 
     # --- Custom Button Logic ---
     if custom_btn and custom_btn.get("text"):
         btn_url = custom_btn.get("url", "").strip()
         
-        # Agar URL mein http ya tg format nahi hai, toh https laga do
         if btn_url and not btn_url.startswith(("http://", "https://", "tg://")):
             btn_url = f"https://{btn_url}"
         elif not btn_url:
             btn_url = "https://t.me/Telegram"
             
-        # Custom button ko alag color code (s_map[3]) de dete hain randomly 
         c_btn = create_btn(text=custom_btn["text"], url=btn_url, style=s_map[3])
         
         if btn_pos in ["UP", "TOP"]:
@@ -173,8 +170,7 @@ async def get_start_effect(bot_id):
 
 async def get_custom_btn_text(bot_id, key, default_text):
     d = await clonebotdb.find_one({"bot_id": bot_id}) or {}
-    val = d.get(f"btn_{key}", default_text)
-    return val
+    return d.get(f"btn_{key}", default_text)
 
 # ✅ Helper to Add Random Content
 async def add_start_content(bot_id, key, value):
@@ -185,7 +181,7 @@ async def add_start_content(bot_id, key, value):
         if isinstance(current, dict):
             current = f"{current['text']} - {current['url']}" 
 
-        if value in current:
+        if str(value) in str(current).split("|||"):
             return False 
         final_value = f"{current}|||{value}"
     else:
@@ -195,13 +191,6 @@ async def add_start_content(bot_id, key, value):
     return True
 
 # --- General Helpers ---
-
-def get_random_start_image():
-    if START_IMG_URL:
-        if isinstance(START_IMG_URL, list):
-            return random.choice(START_IMG_URL)
-        return START_IMG_URL
-    return "https://telegra.ph/file/2e3d368e77c449c287430.jpg"
 
 def format_link(val):
     if not val or str(val).strip() in ["", "none", "None"]:
@@ -253,9 +242,9 @@ async def start_pm(client, message: Message, _):
     else:
         anim_frames = [
             "<b><tg-emoji emoji-id='5891211339170326418'>⌛️</tg-emoji> ʟᴏᴀᴅɪɴɢ</b>", 
-            "<b><tg-emoji emoji-id='5891211339170326418'>⌛️</tg-emoji> ʟᴏᴀᴅɪɴɢ.</b>", 
-            "<b><tg-emoji emoji-id='5373310679241466020'>🌀</tg-emoji> ʟᴏᴀᴅɪɴɢ..</b>", 
-            "<b><tg-emoji emoji-id='5373310679241466020'>🌀</tg-emoji> ʟᴏᴀᴅɪɴɢ...</b>"
+            "<b><tg-emoji emoji-id='5891211339170326418'>⌛️</tg-emoji> 🇩 🇮 🇳 🇬  🇩 🇴 🇳 🇬 </b>", 
+            "<b><tg-emoji emoji-id='5373310679241466020'>🌀</tg-emoji> 🇸 🇹 🇦 🇷 🇹 🇮 🇳 🇬  🇧 🇦 🇧 🇾 💋 </b>", 
+            f"<b><tg-emoji emoji-id='5373310679241466020'>🌀</tg-emoji> {a.first_name} </b>"
         ]
         try:
             loading = await message.reply_text(anim_frames[0])
@@ -268,7 +257,7 @@ async def start_pm(client, message: Message, _):
         except:
             pass
 
-    # ✅ Optimized: Fetch All Data in Parallel (Fastest Way)
+    # ✅ Fetch All Data properly
     (
         C_BOT_OWNER_ID,
         raw_support,
@@ -281,7 +270,7 @@ async def start_pm(client, message: Message, _):
         raw_custom_btn,
         btn_pos,
         raw_video,
-        raw_img,
+        raw_img,      # ✨ Custom image preserved 
         raw_caption,
         raw_reaction,
         raw_effect
@@ -297,7 +286,7 @@ async def start_pm(client, message: Message, _):
         get_start_button(bot_id),
         get_start_btn_pos(bot_id),
         get_start_video(bot_id),
-        get_start_image(bot_id),
+        get_start_image(bot_id), 
         get_start_caption(bot_id),
         get_start_reaction(bot_id),
         get_start_effect(bot_id),
@@ -307,11 +296,10 @@ async def start_pm(client, message: Message, _):
     C_SUPPORT_CHANNEL = format_link(raw_channel)
     OWNER_URL = f"tg://openmessage?user_id={C_BOT_OWNER_ID}" if C_BOT_OWNER_ID else "https://t.me/Telegram"
 
-    # ✅ 1. RANDOM REACTION LOGIC (Custom or Default)
+    # ✅ 1. RANDOM REACTION LOGIC
     if raw_reaction:
         reaction_emoji = random.choice(raw_reaction.split("|||"))
     else:
-        # Default Random Reactions
         reaction_emoji = random.choice(["🔥", "❤️", "🥰", "😍", "👍", "⚡", "🎉"])
     
     try:
@@ -324,21 +312,37 @@ async def start_pm(client, message: Message, _):
     except:
         pass
 
-    # Inline Arguments
+    # Inline Arguments Help Data
     s_map = get_style_map()
     if len(message.text.split()) > 1:
         arg = message.text.split(None, 1)[1]
         
         if arg.startswith("help"):
             keyboard = InlineKeyboardMarkup([[create_btn(text=_["S_B_9"], url=C_SUPPORT_CHAT, style=s_map[1])]])
+            # Photo logic safely implemented below for Help menu
+            help_photo = None
+            if raw_img:
+                help_photo = random.choice(raw_img.split("|||"))
+            if not help_photo:
+                try:
+                    async for p in client.get_chat_photos(message.from_user.id, limit=1):
+                        help_photo = p.file_id
+                        break
+                except:
+                    pass
+            if not help_photo:
+                help_photo = random.choice(["https://n.uguu.se/GvQQwulv.jpg", "https://d.uguu.se/nVKJFsNv.jpg", "https://n.uguu.se/CSSeXVzQ.jpg", "https://d.uguu.se/pBwORuAH.jpg"])
+                
             return await message.reply_photo(
-                photo=get_random_start_image(),
+                photo=help_photo,
                 caption=_["help_1"].format(C_SUPPORT_CHAT),
                 reply_markup=keyboard,
                 has_spoiler=True
             )
+            
         if arg.startswith("sud"):
             return await sudoers_list(client=client, message=message, _=_)
+            
         if arg.startswith("inf"):
             m = await message.reply_text("<tg-emoji emoji-id='5429571366384842791'>🔎</tg-emoji>")
             q = arg.replace("info_", "", 1)
@@ -371,48 +375,79 @@ async def start_pm(client, message: Message, _):
                 txt, url = chosen_str.split("-", 1)
                 custom_button_data = {"text": txt.strip(), "url": url.strip()}
     
-    # Generate Buttons using Internal Function
     markup = make_start_panel(a.username, OWNER_URL,
                               txt_add, txt_support, txt_channel, txt_owner, txt_help,
                               C_SUPPORT_CHAT, C_SUPPORT_CHANNEL,
                               custom_button_data, btn_pos)
 
-    # Media & Caption Logic
-    start_video = random.choice(raw_video.split("|||")) if raw_video else None
-    start_img = random.choice(raw_img.split("|||")) if raw_img else None
-    custom_caption = random.choice(raw_caption.split("|||")) if raw_caption else None
-    
+    # 🟢 Custom Start Caption Logic
     user_mention = get_mention_html(message.from_user.id, message.from_user.first_name)
     bot_mention = get_mention_html(a.id, a.first_name)
     
-    if custom_caption:
-        try:
-            caption = custom_caption.format(
-                name=user_mention,
-                firstname=message.from_user.first_name,
-                botname=bot_mention,
-                username=a.username
-            )
-        except:
-            caption = custom_caption
+    if raw_caption:
+        caption_template = random.choice(raw_caption.split("|||"))
+        caption = caption_template.replace("{name}", user_mention)\
+                                  .replace("{firstname}", message.from_user.first_name)\
+                                  .replace("{botname}", bot_mention)\
+                                  .replace("{username}", a.username)
     else:
-        formatted_text = (
-            f"Hey {user_mention} <tg-emoji emoji-id='5246815495713207687'>👋</tg-emoji>\n\n"
-            f"<tg-emoji emoji-id='6172312314423808834'>✨</tg-emoji> THIS IS {bot_mention} !\n\n"
-            f"<tg-emoji emoji-id='6082387600599944892'>🎧</tg-emoji> A FAST & POWERFUL TELEGRAM MUSIC PLAYER BOT.\n\n"
-            f"──────────────────\n"
-            f"<tg-emoji emoji-id='6271537028307881531'>💎</tg-emoji> POWERED BY » {bot_mention}"
+        bot_name_upper = a.first_name.upper()
+        caption = (
+            f"───[ ˹ {bot_name_upper} ˼ 🎵 ]───\n\n"
+            f"Hᴏʟᴏᴏ - !! {user_mention}\n\n"
+            f"I ᴀᴍ ᴛʜᴇ ғᴀsᴛ ᴀɴᴅ ᴘᴏᴡᴇʀғᴜʟ ᴍᴜsɪᴄ ᴘʟᴀʏᴇʀ ʙᴏᴛ ᴡɪᴛʜ sᴏᴍᴇ ᴀᴡᴇsᴏᴍᴇ ғᴇᴀᴛᴜʀᴇs.\n\n"
+            f"<blockquote>"
+            f"🎶 ʜɪɢʜ-ǫᴜᴧʟɪᴛʏ ᴍᴜꜱɪᴄ ᴘʟᴧʏєʀ ʙσᴛ\n"
+            f"ғσʀ ᴛєʟєɢʀᴧϻ ɢʀσᴜᴘꜱ & ᴄʜᴧηηєʟꜱ\n\n"
+            f"🔥 ɪηꜱᴛᴧηᴛ ꜱᴛʀєᴧϻɪηɢ\n"
+            f"❤️ ꜱϻσσᴛʜ ᴘʟᴧʏʙᴧᴄᴋ\n"
+            f"🎧 ᴄʀʏꜱᴛᴧʟ ꜱσᴜηᴅ | ησ ʟᴧɢ"
+            f"</blockquote>\n\n"
+            f"Cʟɪᴄᴋ ᴏɴ ᴛʜᴇ ʜᴇʟᴘ ʙᴜᴛᴛᴏɴ ᴛᴏ ɢᴇᴛ ɪɴғᴏʀᴍᴀᴛɪᴏɴ ᴀʙᴏᴜᴛ ᴍʏ ᴍᴏᴅᴜʟᴇs ᴀɴᴅ ᴄᴏᴍᴍᴀɴᴅs."
         )
-        caption = f"<blockquote expandable>{formatted_text}</blockquote>"
 
+    # Base payload settings
+    effect_id = random.choice(raw_effect.split("|||")) if raw_effect else None
+    send_kwargs = {
+        "caption": caption,
+        "reply_markup": markup,
+        "has_spoiler": True,
+        "parse_mode": ParseMode.HTML
+    }
+    if effect_id:
+        send_kwargs["effect_id"] = effect_id
+
+    # 🎥 Video Logic Check
+    start_video = random.choice(raw_video.split("|||")) if raw_video else None
     if start_video:
         try:
-            return await message.reply_video(start_video, caption=caption, reply_markup=markup, has_spoiler=True, parse_mode=ParseMode.HTML)
+            return await message.reply_video(start_video, **send_kwargs)
         except:
             pass
+            
+    # 📸 SMART PHOTO LOGIC (Custom > Profile Pic > Random Urls)
+    photo = None
+    start_img = random.choice(raw_img.split("|||")) if raw_img else None
     
-    photo = start_img if start_img else get_random_start_image()
-    await message.reply_photo(photo, caption=caption, reply_markup=markup, has_spoiler=True, parse_mode=ParseMode.HTML)
+    if start_img:
+        photo = start_img
+    else:
+        try:
+            async for p in client.get_chat_photos(message.from_user.id, limit=1):
+                photo = p.file_id
+                break
+        except:
+            pass
+            
+        if not photo: # If user DP is not found or hidden
+            photo = random.choice([
+                "https://n.uguu.se/GvQQwulv.jpg",
+                "https://d.uguu.se/nVKJFsNv.jpg",
+                "https://n.uguu.se/CSSeXVzQ.jpg",
+                "https://d.uguu.se/pBwORuAH.jpg"
+            ])
+
+    await message.reply_photo(photo, **send_kwargs)
 
 # =====================================================================
 # START COMMAND (GROUP)
@@ -425,7 +460,6 @@ async def start_gp(client, message: Message, _):
     bot_id = a.id
     uptime = get_readable_time(int(time.time() - _boot_))
     
-    # Optimized Group Fetch
     raw_support, txt_add, txt_support, raw_video, raw_img = await asyncio.gather(
         get_cloned_support_chat(a.id),
         get_custom_btn_text(a.id, "add", _["S_B_1"]),
@@ -435,21 +469,38 @@ async def start_gp(client, message: Message, _):
     )
 
     C_SUPPORT_CHAT = format_link(raw_support)
-
     markup = make_gp_panel(a.username, txt_add, txt_support, C_SUPPORT_CHAT)
-    
     caption = _["start_1"].format(a.mention, uptime)
     
     start_video = random.choice(raw_video.split("|||")) if raw_video else None
-    start_img = random.choice(raw_img.split("|||")) if raw_img else None
-    
     if start_video:
         try:
             return await message.reply_video(start_video, caption=caption, reply_markup=markup, has_spoiler=True)
         except:
             pass
+            
+    # 📸 SMART PHOTO LOGIC
+    photo = None
+    start_img = random.choice(raw_img.split("|||")) if raw_img else None
     
-    photo = start_img if start_img else get_random_start_image()
+    if start_img:
+        photo = start_img
+    else:
+        try:
+            async for p in client.get_chat_photos(message.from_user.id, limit=1):
+                photo = p.file_id
+                break
+        except:
+            pass
+            
+        if not photo:
+            photo = random.choice([
+                "https://n.uguu.se/GvQQwulv.jpg",
+                "https://d.uguu.se/nVKJFsNv.jpg",
+                "https://n.uguu.se/CSSeXVzQ.jpg",
+                "https://d.uguu.se/pBwORuAH.jpg"
+            ])
+
     await message.reply_photo(photo, caption=caption, reply_markup=markup, has_spoiler=True)
     await add_served_chat_clone(message.chat.id, a.id)
 
@@ -463,7 +514,6 @@ async def home_back_handler(client, CallbackQuery, _):
     a = await client.get_me()
     bot_id = a.id
 
-    # ✅ SUPER FAST: Fetching all Database values in ONE GO using asyncio.gather
     (
         C_BOT_OWNER_ID,
         raw_support,
@@ -476,7 +526,7 @@ async def home_back_handler(client, CallbackQuery, _):
         raw_custom_btn,
         btn_pos,
         raw_video,
-        raw_img,
+        raw_img,      # ✨ Custom Image Preserved
         raw_caption,
         raw_effect
     ) = await asyncio.gather(
@@ -515,44 +565,81 @@ async def home_back_handler(client, CallbackQuery, _):
                               C_SUPPORT_CHAT, C_SUPPORT_CHANNEL,
                               custom_button_data, btn_pos)
 
-    start_video = random.choice(raw_video.split("|||")) if raw_video else None
-    start_img = random.choice(raw_img.split("|||")) if raw_img else None
-    custom_caption = random.choice(raw_caption.split("|||")) if raw_caption else None
     
     user_mention = get_mention_html(CallbackQuery.from_user.id, CallbackQuery.from_user.first_name)
     bot_mention = get_mention_html(a.id, a.first_name)
     
-    if custom_caption:
-        try:
-            caption = custom_caption.format(name=user_mention, firstname=CallbackQuery.from_user.first_name, botname=bot_mention, username=a.username)
-        except:
-            caption = custom_caption
+    if raw_caption:
+        caption_template = random.choice(raw_caption.split("|||"))
+        caption = caption_template.replace("{name}", user_mention)\
+                                  .replace("{firstname}", CallbackQuery.from_user.first_name)\
+                                  .replace("{botname}", bot_mention)\
+                                  .replace("{username}", a.username)
     else:
-        formatted_text = (
-            f"Hey {user_mention} <tg-emoji emoji-id='5246815495713207687'>👋</tg-emoji>\n\n"
-            f"<tg-emoji emoji-id='6172312314423808834'>✨</tg-emoji> THIS IS {bot_mention} !\n\n"
-            f"<tg-emoji emoji-id='6082387600599944892'>🎧</tg-emoji> A FAST & POWERFUL TELEGRAM MUSIC PLAYER BOT.\n\n"
-            f"──────────────────\n"
-            f"<tg-emoji emoji-id='6271537028307881531'>💎</tg-emoji> POWERED BY » {bot_mention}"
+        bot_name_upper = a.first_name.upper()
+        caption = (
+            f"───[ ˹ {bot_name_upper} ˼ 🎵 ]───\n\n"
+            f"Hᴏʟᴏᴏ - !! {user_mention}\n\n"
+            f"I ᴀᴍ ᴛʜᴇ ғᴀsᴛ ᴀɴᴅ ᴘᴏᴡᴇʀғᴜʟ ᴍᴜsɪᴄ ᴘʟᴀʏᴇʀ ʙᴏᴛ ᴡɪᴛʜ sᴏᴍᴇ ᴀᴡᴇsᴏᴍᴇ ғᴇᴀᴛᴜʀᴇs.\n\n"
+            f"<blockquote>"
+            f"🎶 ʜɪɢʜ-ǫᴜᴧʟɪᴛʏ ᴍᴜꜱɪᴄ ᴘʟᴧʏєʀ ʙσᴛ\n"
+            f"ғσʀ ᴛєʟєɢʀᴧϻ ɢʀσᴜᴘꜱ & ᴄʜᴧηηєʟꜱ\n\n"
+            f"🔥 ɪηꜱᴛᴧηᴛ ꜱᴛʀєᴧϻɪηɢ\n"
+            f"❤️ ꜱϻσσᴛʜ ᴘʟᴧʏʙᴧᴄᴋ\n"
+            f"🎧 ᴄʀʏꜱᴛᴧʟ ꜱσᴜηᴅ | ησ ʟᴧɢ"
+            f"</blockquote>\n\n"
+            f"Cʟɪᴄᴋ ᴏɴ ᴛʜᴇ ʜᴇʟᴘ ʙᴜᴛᴛᴏɴ ᴛᴏ ɢᴇᴛ ɪɴғᴏʀᴍᴀᴛɪᴏɴ ᴀʙᴏᴜᴛ ᴍʏ ᴍᴏᴅᴜʟᴇs ᴀɴᴅ ᴄᴏᴍᴍᴀɴᴅs."
         )
-        caption = f"<blockquote expandable>{formatted_text}</blockquote>"
+
+    # 📸 SMART PHOTO LOGIC
+    photo = None
+    start_img = random.choice(raw_img.split("|||")) if raw_img else None
+    
+    if start_img:
+        photo = start_img
+    else:
+        try:
+            async for p in client.get_chat_photos(CallbackQuery.from_user.id, limit=1):
+                photo = p.file_id
+                break
+        except:
+            pass
+            
+        if not photo:
+            photo = random.choice([
+                "https://n.uguu.se/GvQQwulv.jpg",
+                "https://d.uguu.se/nVKJFsNv.jpg",
+                "https://n.uguu.se/CSSeXVzQ.jpg",
+                "https://d.uguu.se/pBwORuAH.jpg"
+            ])
+
+    start_video = random.choice(raw_video.split("|||")) if raw_video else None
+    effect_id = random.choice(raw_effect.split("|||")) if raw_effect else None
 
     try:
         if start_video:
             await CallbackQuery.edit_message_media(media=InputMediaVideo(media=start_video, caption=caption), reply_markup=markup)
         else:
-            photo = start_img if start_img else get_random_start_image()
             await CallbackQuery.edit_message_media(media=InputMediaPhoto(media=photo, caption=caption), reply_markup=markup)
     except Exception as e:
         try:
             await CallbackQuery.message.delete()
         except:
             pass
+            
+        send_kwargs = {
+            "caption": caption,
+            "reply_markup": markup,
+            "has_spoiler": True,
+            "parse_mode": ParseMode.HTML
+        }
+        if effect_id:
+            send_kwargs["effect_id"] = effect_id
+            
         if start_video:
-            await CallbackQuery.message.reply_video(start_video, caption=caption, reply_markup=markup, has_spoiler=True, parse_mode=ParseMode.HTML)
+            await CallbackQuery.message.reply_video(start_video, **send_kwargs)
         else:
-            photo = start_img if start_img else get_random_start_image()
-            await CallbackQuery.message.reply_photo(photo, caption=caption, reply_markup=markup, has_spoiler=True, parse_mode=ParseMode.HTML)
+            await CallbackQuery.message.reply_photo(photo, **send_kwargs)
 
 # =====================================================================
 # MANAGEMENT & SETTINGS
@@ -640,9 +727,8 @@ async def set_start_effect_cmd(client, message):
     }
     
     arg = message.command[1]
-    effect_id = EFFECT_MAP.get(arg, arg) # Use ID from map, or use raw input if not in map
+    effect_id = EFFECT_MAP.get(arg, arg)
     
-    # ✅ Using add_start_content to allow Multiple Effects
     await add_start_content(bot_id, "start_effect", effect_id)
     await message.reply_text("<tg-emoji emoji-id='6280269890821558384'>✅</tg-emoji> Start Effect Added!")
 
@@ -653,7 +739,7 @@ async def del_start_effect_cmd(client, message):
     await message.reply_text("<tg-emoji emoji-id='6280269890821558384'>✅</tg-emoji> Start Effect Deleted (Default Random will be used)!")
 
 # =====================================================================
-# MEDIA SETTERS (Supports Adding Multiple)
+# MEDIA SETTERS
 # =====================================================================
 
 @Client.on_message(filters.command(["setstartimg", "addstartimg"]) & ~BANNED_USERS)
@@ -717,7 +803,7 @@ async def del_start_animation_cmd(client, message):
     await message.reply_text("<tg-emoji emoji-id='6280269890821558384'>✅</tg-emoji> Animations Deleted!")
 
 # =====================================================================
-# CAPTION & BUTTON (Multi/Random Supported)
+# CAPTION & BUTTON
 # =====================================================================
 
 @Client.on_message(filters.command(["setstartcaption", "addstartcaption"]) & ~BANNED_USERS)
