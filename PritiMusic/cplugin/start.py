@@ -44,7 +44,7 @@ def get_style_map():
     random.shuffle(styles)
     return {1: styles[0], 2: styles[1], 3: styles[2]}
 
-# 🔘 Smart Button Creator (Now with user_id support)
+# 🔘 Smart Button Creator
 def create_btn(text, cb=None, url=None, user_id=None, style=ButtonStyle.PRIMARY, no_emoji=False):
     kwargs = {"text": text, "style": style}
     if cb: kwargs["callback_data"] = cb
@@ -53,14 +53,44 @@ def create_btn(text, cb=None, url=None, user_id=None, style=ButtonStyle.PRIMARY,
     if not no_emoji: kwargs["icon_custom_emoji_id"] = int(random.choice(PREMIUM_EMOJIS))
     return InlineKeyboardButton(**kwargs)
 
+
 # =====================================================================
-# INTERNAL BUTTON HELPERS
+# INTERNAL BUTTON HELPERS (SMART OWNER LOGIC)
 # =====================================================================
 
-def make_start_panel(bot_username, owner_id, 
-                     txt_add, txt_support, txt_channel, txt_owner, txt_help, 
-                     support_chat, support_channel,
-                     custom_btn=None, btn_pos="TOP"):
+async def get_safe_owner_button(client, text, user_id, username=None, style=ButtonStyle.PRIMARY):
+    """
+    1. Pehle ID se try karega.
+    2. Agar ID fail ho gayi, toh Username se try karega.
+    3. Agar dono fail ho gaye, toh chup chap 'None' return karega (No Error!).
+    """
+    if not user_id and not username:
+        return None
+        
+    try:
+        if user_id:
+            # Bot ID se user ko cache karega
+            user = await client.get_users(user_id)
+            return create_btn(text=text, user_id=user.id, style=style)
+    except Exception:
+        pass # ID fail ho gayi, aage badho
+        
+    try:
+        if username:
+            # Bot Username se user ko cache karega
+            user = await client.get_users(username)
+            return create_btn(text=text, user_id=user.id, style=style)
+    except Exception:
+        pass # Username bhi fail ho gaya
+        
+    # Dono fail hone par None return hoga, taaki bot crash na ho
+    return None
+
+
+async def make_start_panel(client, bot_username, owner_id, owner_username, 
+                           txt_add, txt_support, txt_channel, txt_owner, txt_help, 
+                           support_chat, support_channel,
+                           custom_btn=None, btn_pos="TOP"):
     
     s_map = get_style_map()
     buttons = []
@@ -73,7 +103,7 @@ def make_start_panel(bot_username, owner_id,
     if txt_help != "HIDDEN":
         buttons.append([create_btn(text=txt_help, cb="settings_back_helper", style=s_map[1])])
 
-    # 3. Support & Channel (Unified Row of 2)
+    # 3. Support & Channel
     row_support = []
     if txt_support != "HIDDEN":
         row_support.append(create_btn(text=txt_support, url=support_chat, style=s_map[2]))
@@ -82,13 +112,12 @@ def make_start_panel(bot_username, owner_id,
     if row_support:
         buttons.append(row_support)
 
-    # 4. Owner Button (Placed strictly beneath Support & Channel)
+    # 4. Owner Button (SAFE LOGIC)
     if txt_owner != "HIDDEN":
-        if owner_id:
-            # Agar ID hai toh user_id parameter pass hoga jisme username ki zarurat nahi
-            buttons.append([create_btn(text=txt_owner, user_id=owner_id, style=s_map[1])])
-        else:
-            buttons.append([create_btn(text=txt_owner, url="https://t.me/Telegram", style=s_map[1])])
+        owner_btn = await get_safe_owner_button(client, txt_owner, owner_id, owner_username, style=s_map[1])
+        if owner_btn:
+            buttons.append([owner_btn])
+        # Agar owner_btn 'None' return hota hai, toh button banega hi nahi (crash hone ka koi chance hi nahi)
 
     # --- Custom Button Logic ---
     if custom_btn and custom_btn.get("text"):
@@ -274,7 +303,7 @@ async def start_pm(client, message: Message, _):
         raw_custom_btn,
         btn_pos,
         raw_video,
-        raw_img,      # ✨ Custom image preserved 
+        raw_img,      
         raw_caption,
         raw_reaction,
         raw_effect
@@ -299,7 +328,7 @@ async def start_pm(client, message: Message, _):
     C_SUPPORT_CHAT = format_link(raw_support)
     C_SUPPORT_CHANNEL = format_link(raw_channel)
 
-    # ✅ 1. RANDOM REACTION LOGIC
+    # ✅ RANDOM REACTION LOGIC
     if raw_reaction:
         reaction_emoji = random.choice(raw_reaction.split("|||"))
     else:
@@ -322,7 +351,6 @@ async def start_pm(client, message: Message, _):
         
         if arg.startswith("help"):
             keyboard = InlineKeyboardMarkup([[create_btn(text=_["S_B_9"], url=C_SUPPORT_CHAT, style=s_map[1])]])
-            # Photo logic safely implemented below for Help menu
             help_photo = None
             if raw_img:
                 help_photo = random.choice(raw_img.split("|||"))
@@ -378,11 +406,24 @@ async def start_pm(client, message: Message, _):
                 txt, url = chosen_str.split("-", 1)
                 custom_button_data = {"text": txt.strip(), "url": url.strip()}
     
-    # 🔗 Direct ID-Based Link using C_BOT_OWNER_ID
-    markup = make_start_panel(a.username, C_BOT_OWNER_ID,
-                              txt_add, txt_support, txt_channel, txt_owner, txt_help,
-                              C_SUPPORT_CHAT, C_SUPPORT_CHANNEL,
-                              custom_button_data, btn_pos)
+    # 🔗 ASYNC Start Panel (Safe Owner Fallbacks)
+    owner_username = getattr(config, "OWNER_USERNAME", None)
+    
+    markup = await make_start_panel(
+        client=client, 
+        bot_username=a.username, 
+        owner_id=C_BOT_OWNER_ID, 
+        owner_username=owner_username,
+        txt_add=txt_add, 
+        txt_support=txt_support, 
+        txt_channel=txt_channel, 
+        txt_owner=txt_owner, 
+        txt_help=txt_help,
+        support_chat=C_SUPPORT_CHAT, 
+        support_channel=C_SUPPORT_CHANNEL,
+        custom_btn=custom_button_data, 
+        btn_pos=btn_pos
+    )
 
     # 🟢 Custom Start Caption Logic
     user_mention = get_mention_html(message.from_user.id, message.from_user.first_name)
@@ -429,7 +470,7 @@ async def start_pm(client, message: Message, _):
         except:
             pass
             
-    # 📸 SMART PHOTO LOGIC (Custom > Profile Pic > Random Urls)
+    # 📸 SMART PHOTO LOGIC
     photo = None
     start_img = random.choice(raw_img.split("|||")) if raw_img else None
     
@@ -443,7 +484,7 @@ async def start_pm(client, message: Message, _):
         except:
             pass
             
-        if not photo: # If user DP is not found or hidden
+        if not photo:
             photo = random.choice([
                 "https://n.uguu.se/GvQQwulv.jpg",
                 "https://d.uguu.se/nVKJFsNv.jpg",
@@ -530,7 +571,7 @@ async def home_back_handler(client, CallbackQuery, _):
         raw_custom_btn,
         btn_pos,
         raw_video,
-        raw_img,      # ✨ Custom Image Preserved
+        raw_img,      
         raw_caption,
         raw_effect
     ) = await asyncio.gather(
@@ -563,12 +604,24 @@ async def home_back_handler(client, CallbackQuery, _):
                 txt, url = chosen_str.split("-", 1)
                 custom_button_data = {"text": txt.strip(), "url": url.strip()}
     
-    # 🔗 Direct ID-Based Link using C_BOT_OWNER_ID
-    markup = make_start_panel(a.username, C_BOT_OWNER_ID,
-                              txt_add, txt_support, txt_channel, txt_owner, txt_help,
-                              C_SUPPORT_CHAT, C_SUPPORT_CHANNEL,
-                              custom_button_data, btn_pos)
-
+    # 🔗 ASYNC Start Panel logic
+    owner_username = getattr(config, "OWNER_USERNAME", None)
+    
+    markup = await make_start_panel(
+        client=client, 
+        bot_username=a.username, 
+        owner_id=C_BOT_OWNER_ID, 
+        owner_username=owner_username,
+        txt_add=txt_add, 
+        txt_support=txt_support, 
+        txt_channel=txt_channel, 
+        txt_owner=txt_owner, 
+        txt_help=txt_help,
+        support_chat=C_SUPPORT_CHAT, 
+        support_channel=C_SUPPORT_CHANNEL,
+        custom_btn=custom_button_data, 
+        btn_pos=btn_pos
+    )
     
     user_mention = get_mention_html(CallbackQuery.from_user.id, CallbackQuery.from_user.first_name)
     bot_mention = get_mention_html(a.id, a.first_name)
