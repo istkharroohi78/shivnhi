@@ -86,14 +86,15 @@ def stream_markup_timer(_, chat_id, played, dur):
     else:
         filled_blocks = 0
         
-    filled_blocks = min(max(filled_blocks, 0), total_blocks)
-    bar = "▰" * filled_blocks + "▱" * (total_blocks - filled_blocks)
+    # Block and Moving Emoji Logic (▰▰▰🎵▱▱▱▱▱▱)
+    filled_blocks = min(max(filled_blocks, 0), total_blocks - 1)
+    bar = "▰" * filled_blocks + "🎵" + "▱" * (total_blocks - filled_blocks - 1)
 
     s_map = get_style_map()
     buttons = [
-        # Row 1: Timer
+        # Row 1: Timer with Moving 🎵 and Premium Emoji ID
         [
-            create_btn(text=f"{played} {bar} {dur}", cb="GetTimer", style=s_map[1])
+            create_btn(text=f"{played} {bar} {dur}", cb="GetTimer", style=s_map[1], emoji_id=5217933090483098080)
         ],
         # Row 2: 5 Compact Play Controls with Premium Emojis
         [
@@ -338,13 +339,14 @@ def panel_markup_4(_, vidid, chat_id, played, dur):
     else:
         filled_blocks = 0
         
-    filled_blocks = min(max(filled_blocks, 0), total_blocks)
-    bar = "▰" * filled_blocks + "▱" * (total_blocks - filled_blocks)
+    # Block and Moving Emoji Logic (▰▰▰🎵▱▱▱▱▱▱)
+    filled_blocks = min(max(filled_blocks, 0), total_blocks - 1)
+    bar = "▰" * filled_blocks + "🎵" + "▱" * (total_blocks - filled_blocks - 1)
 
     s_map = get_style_map()
     buttons = [
         [
-            create_btn(text=f"{played} {bar} {dur}", cb="GetTimer", style=s_map[1])
+            create_btn(text=f"{played} {bar} {dur}", cb="GetTimer", style=s_map[1], emoji_id=5217933090483098080)
         ],
         [
             create_btn(text="\u200b", cb=f"ADMIN Resume|{chat_id}", style=s_map[3], emoji_id=PLAY_EMOJI),
@@ -381,13 +383,14 @@ def panel_markup_clone(_, vidid, chat_id, played, dur):
     else:
         filled_blocks = 0
         
-    filled_blocks = min(max(filled_blocks, 0), total_blocks)
-    bar = "▰" * filled_blocks + "▱" * (total_blocks - filled_blocks)
+    # Block and Moving Emoji Logic (▰▰▰🎵▱▱▱▱▱▱)
+    filled_blocks = min(max(filled_blocks, 0), total_blocks - 1)
+    bar = "▰" * filled_blocks + "🎵" + "▱" * (total_blocks - filled_blocks - 1)
 
     s_map = get_style_map()
     buttons = [
         [
-            create_btn(text=f"{played} {bar} {dur}", cb="GetTimer", style=s_map[1])
+            create_btn(text=f"{played} {bar} {dur}", cb="GetTimer", style=s_map[1], emoji_id=5217933090483098080)
         ],
         [
             create_btn(text="\u200b", cb=f"ADMIN Resume|{chat_id}", style=s_map[3], emoji_id=PLAY_EMOJI),
